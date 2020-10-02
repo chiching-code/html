@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>
+Three.JS Prototype
+</title>
+<style>
+    #heading{
+        position: absolute;
+        top:0.8vh;
+        width:100vw;
+        text-align: center;
+    }
+</style>
+</head>
+<body>
+<div id="heading">
+    <h1 style="text-align:center">Three.JS</h1>
+    <button id='roll'> Roll Dice </button>
+</div>
+<canvas style="width:100vw;height:100vh;background:pink">
+</canvas>
+<p style="position:absolute;width:100vw;bottom:1vh;text-align:center" id='msg'>You get 4.</p>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script>
+$( '#roll').click ( function(){
+    rollDice();
+});
+function clamp(value,min,max){
+    if(value<min)return min;
+    if(value>max) return max;
+    return value;
+}
+function rollDice(){
+    var result = clamp(Math.round(Math.random()*6),1,6);
+    $('#msg').text('You get '+result+'.');
+}
+</script>
+</body>
+</html>

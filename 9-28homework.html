@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>
+9-28homework
+</title>
+<style>
+    #content{
+        position: absolute;
+        top:15vh;
+        width:100vw;
+        text-align: center;
+    }
+</style>
+</head>
+<body style="overflow:hidden">
+    <h2 style="text-align:center">Homework 3</h2>
+    <hr>
+<div id="content">
+    <button id='roll' style = "text-align:center;background:yellow"> Light Off </button>
+</div>
+<canvas id="canvas" style="width:100vw;height:90vh;background:pink;overflow:visible">
+</canvas>
+<p style="position:absolute;width:100vw;bottom:1vh;text-align:center" id='msg'>The Light is On.</p>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script>
+ var time =0;
+$( '#roll').click ( function(){
+    if(time==0){
+        toChange();
+        time=1;
+    }
+    else if(time==1){
+        toChange2();
+        time=0;
+    }
+});
+function  toChange(){
+    var odiv = document.getElementById('canvas');
+    odiv.style.background='darkgrey';
+    $('#roll').text('Light On');
+    $('#msg').text('The Light is Off.');
+}
+function  toChange2(){
+    var odiv = document.getElementById('canvas');
+    odiv.style.background='pink';
+    $('#roll').text('Light Off');
+    $('#msg').text('The Light is On.');
+}
+    
+</script>
+</body>
+</html>
