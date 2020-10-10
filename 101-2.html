@@ -2,17 +2,35 @@
 <html>
 <head>
 <style>
+    #heading{
+        position : absolute;
+        text-align : center;
+        top: 2vh;
+        width : 100vw;
+    }
+
 </style>
 </head>
 <body>
+<div id='heading'>
+    <h1 style='color: lightblue;'>My First 3JS</h1>
+    <button id='toggle'> Press </button>
+</div>    
+
 <script src="https://threejs.org/build/three.min.js"></script>
 <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 
 <script>
-//my script  
-
-var renderer,camera,scene;
+//my script
+javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='https://mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()    
     
+$('#toggle').click(
+ function(){
+   axes.material.visible = !axes.material.visible;  
+ })
+var renderer,camera,scene;
+var axes;    
 init();
 animate();
     
@@ -28,7 +46,7 @@ function init(){
     scene = new THREE.Scene();
     var grid = new THREE.GridHelper(100,10,'red','white');
     scene.add(grid);
-    var axes = new THREE.AxisHelper(10);
+    axes = new THREE.AxisHelper(10);
     scene.add(axes);
 }
 function animate(){
