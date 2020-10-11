@@ -15,6 +15,7 @@
 <div id='heading'>
     <h1 style='color: lightblue;'>My First 3JS</h1>
     <button id='toggle'> Press </button>
+    <p style='color:antiquewhite' id='word'>axes display</p>
 </div>    
 
 <script src="https://threejs.org/build/three.min.js"></script>
@@ -24,11 +25,26 @@
 <script>
 //my script
 javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='https://mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()    
-    
+var time=1;    
 $('#toggle').click(
  function(){
-   axes.material.visible = !axes.material.visible;  
- })
+   axes.material.visible = !axes.material.visible;
+     if(time==0){
+         display();
+         time = 1;
+     }  
+     else if(time==1){
+         undisplay();
+         time = 0;
+     }
+         
+ });
+function display(){
+    $('#word').text('axes display');
+}
+function undisplay(){
+    $('#word').text("axes don't show up");
+}
 var renderer,camera,scene;
 var axes;    
 init();
