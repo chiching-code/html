@@ -31,13 +31,13 @@ function init(){
     var axes = new THREE.AxisHelper(10);
     scene.add(axes);
     
-    var geometry = new THREE.BoxGeometry(25,5,10);
+    var geometry = new THREE.BoxGeometry(25,5,15);
     var material = new THREE.MeshNormalMaterial();
     var box = new THREE.Mesh(geometry,material);
     box.position.set(12.5,2.5,0);
-    var geometry1 = new THREE.CylinderGeometry(5,5,10,64);
+    var geometry1 = new THREE.CylinderGeometry(4,4,10,64);
     var cylinder = new THREE.Mesh(geometry1,material);
-    cylinder.position.set(20,7.5,0);
+    cylinder.position.set(21,7.5,0);
     
     scene.add(cylinder);
     scene.add(box);

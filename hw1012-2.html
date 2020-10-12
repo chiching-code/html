@@ -9,6 +9,7 @@
 <script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
 
 <script>
+    javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='https://mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()
 //my script  
 
 var renderer,camera,scene;
@@ -34,18 +35,18 @@ function init(){
     var material = new THREE.MeshNormalMaterial();
     var geometry = new THREE.BoxGeometry(10,30,10);
     var box = new THREE.Mesh(geometry,material);
-    box.position.set(5,15,5);
+    box.position.set(5,15,-5);
     var geometry2 = new THREE.BoxGeometry(10,30,10);
     var box2 = new THREE.Mesh(geometry2,material);
-    box2.position.set(35,15,5);
+    box2.position.set(35,15,-5);
     var geometry3 = new THREE.BoxGeometry(20,10,10);
     var box3 = new THREE.Mesh(geometry3,material);
-    box3.position.set(20,5,5);
+    box3.position.set(20,5,-5);
     var group = new THREE.Group();
     
-    group.add(box);
-    group.add(box2);
-    group.add(box3);
+    group.add(box,box2,box3);
+    /*group.add(box2);
+    group.add(box3);*/
     scene.add(group);
 }
 function animate(){
