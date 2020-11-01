@@ -11,21 +11,19 @@
 <script>
 //my script  
 
-var renderer,camera,scene,all;
-var p1, p2;
-var p11,p22,p33;
+var renderer,camera,scene;
 var move;
 // for animate()
 var alpha = 0,truck;
 // for animate2()
 var v, ds, moveTo, stepNum, steps;
-    
-var steps2, numStep, moveTo2;
-var theta1, theta2, dq;
+var p;   
+var front=0,now=0,next=0;
+var isWalking;
     
 init();
-animate2();
-animate4();
+animate();
+    
 function init(){
     
     renderer = new THREE.WebGLRenderer ({antialias:true});
@@ -40,48 +38,31 @@ function init(){
     scene.add(grid);
     var axes = new THREE.AxisHelper(10);
     scene.add(axes);
+
+    
+    p = [
+        new THREE.Vector3(-40,0,-40),
+        new THREE.Vector3(-40,0,40),
+        new THREE.Vector3(40,0,40),
+        new THREE.Vector3(40,0,-40),
+    ];
+    
+    var points = [
+        new THREE.Mesh(new THREE.CircleGeometry(10,20),new THREE.MeshBasicMaterial({color:'while'})),
+        new THREE.Mesh(new THREE.CircleGeometry(10,20),new THREE.MeshBasicMaterial({color:'pink'})),
+        new THREE.Mesh(new THREE.CircleGeometry(10,20),new THREE.MeshBasicMaterial({color:'white'})),
+        new THREE.Mesh(new THREE.CircleGeometry(10,20),new THREE.MeshBasicMaterial({color:'pink'})),
+    ];
+    
+    for(let i=0;i<4;i++){
+        points[i].rotation.x = -Math.PI/2;
+        points[i].position.copy(p[i]);
+        scene.add(points[i]);
+    }
     initObject();
     initLight();
 
 }
-function animate2() {
-
-	moveTo = moveTo.clone().add (v.clone().setLength(ds));
-	stepNum++;
-    if (stepNum > steps)
-		truck.position.copy (p2);
-    else
-        truck.position.copy (moveTo);
-    requestAnimationFrame(animate2);
-    renderer.render(scene, camera);
-
-}
-
-//
-// the version using lerp (linear interpolation)
-//
-function animate() {
-    alpha += 0.01;
-	if (alpha > 1) alpha = 1;
-	truck.position.copy (p1.clone().lerp (p2, alpha));
-    requestAnimationFrame(animate);
-    renderer.render(scene, camera);
-
-}   
-function animate4() {
-  if (numStep > steps2)
-  	truck.rotation.y = theta2;
-  else {
-  	truck.rotation.y = moveTo2; 
-		++numStep;
-  	moveTo2 += dq;
-	}
-  
-	requestAnimationFrame(animate4);
-  renderer.render(scene, camera);
-
-}    
-   
 function initObject(){
     var material = new THREE.MeshPhongMaterial();
     var geometry = new THREE.BoxGeometry(20,15,10);//車身
@@ -118,42 +99,128 @@ function initObject(){
  
     truck = new THREE.Group();
     truck.add(box,cylinder,cylinder2,mesh);
+    truck.rotation.y = -Math.PI/2;
     scene.add(truck);
+    straight();
+}    
+function animate(){
     
-    p2 = new THREE.Vector3(20, 0, 45);
-    p1 = new THREE.Vector3 (-45, 0, 45);
-
-      /////////////////
-      // for animate2()
-    v = p2.clone().sub(p1); // v = p2 - p1
-    ds = 0.1;
-    steps = Math.floor(v.length()/ds);
-    moveTo = p1.clone();
+    if(isWalking)
+        walking();
+    else
+        rotating();
+    
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+}
+    
+function walkingInit(){
+    
+    v = p[next].clone().sub(p[now]); // v = p2 - p1
+    ds = 0.3;
+    steps = Math.floor(v.length()/ds);;
+    moveTo = p[now].clone();
     stepNum = 0;
+    
+}
+function walking() {//straight
 
-    p11 = new THREE.Vector3(-20, 0, 40);
-    p22 = new THREE.Vector3 (30, 0, 0);
-	p33 = new THREE.Vector3 (60, 0, 40);
-    var p12 = p22.clone().sub(p11);   // p12 = p2 - p1
-    theta1 = Math.atan2 (p12.x, p12.z);
-    truck.position.copy (p22);
+	moveTo = moveTo.clone().add (v.clone().setLength(ds));
+	stepNum++;
+    if (stepNum > steps){
+		truck.position.copy (p[next]);
+    
+        front++;
+        now++;
+        next++;
+        
+        front %= p.length;
+        now %= p.length;
+        next %= p.length;
+        rotatingInit();
+        isWalking = false;
+    
+    }
+    else
+        truck.position.copy (moveTo);
+
+}
+function rotatingInit(){
+    
+    var p12 = p[now].clone().sub(p[front]);   // p12 = p2 - p1
+    theta1 = Math.atan2 (p12.z, p12.x);
+    truck.position.copy (p[now]);
     truck.rotation.y = theta1;
 
-    var p23 = p33.clone().sub(p22);   // p23 = p3 - p2
-    theta2 = Math.atan2 (p23.x, p23.z);
+    var p23 = p[next].clone().sub(p[now]);   // p23 = p3 - p2
+    theta2 = Math.atan2 (p23.z, p23.x);
 
     dq = 0.01;
-  
+
+    /*if(theta1 <= 0 && theta2 >= 0){
+        theta1 += Math.PI*2;
+    }
+    if(theta1 >= 0 && theta2 <= 0){
+        theta2 += Math.PI*2;
+    }
+    if(theta1>Math.PI || theta2>Math.PI){
+        theta1 = theta1-Math.PI;
+        theta2 = theta2-Math.PI;
+    }*/
+    if(theta1<0)
+        theta1 += Math.PI*2;
+    if(theta2<0)
+        theta2 += Math.PI*2;
+    if(theta1>Math.PI)
+        theta1 = theta1 - Math.PI;
+    if(theta2>Math.PI)
+        theta2 = theta2 - Math.PI;
+    
+    
     steps2 = Math.floor ((theta2-theta1)/dq);
     if (theta1 > theta2) {
-  	steps2 = -steps2;
-    dq = -dq;
+        steps2 = -steps2;
+        dq = -dq;
     }
   
     // debugger;
     numStep = 0;
     moveTo2 = theta1;
+    
+}   
+function rotating(){
+    
+    if (numStep > steps2){
+        truck.rotation.y = theta2;
+        
+        walkingInit();
+        isWalking = true;
+    
+    } 
+    else {
+        truck.rotation.y = moveTo2; 
+            ++numStep;
+        moveTo2 += dq;
+    }
+    
 }
+//
+// the version using lerp (linear interpolation)
+//
+  
+
+
+function straight(){
+    
+    front = p.length-1;
+    now=0;
+    next=1;
+    isWalking = true;
+    
+    walkingInit();
+}
+    
+
     
 function initLight(){
     var pointLight = new THREE.PointLight(0x73c9c5);
