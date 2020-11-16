@@ -26,8 +26,8 @@ var p;
 var front=0,now=0,next=0;
 var isWalking;
     
-var selected;
-    
+
+ 
 init();
 animate();
 animate2();
@@ -116,6 +116,10 @@ function addPoint(myPoint) {
 	myLine.geometry.verticesNeedUpdate = true;
 }
 
+/*function getMousePos(event) {
+      var e = event || window.event;
+      return {'x':e.clientX,'y':e.clientY}
+}*/
     
 function onDocumentMouseDown(event) {
 
@@ -140,13 +144,14 @@ function onDocumentMouseDown(event) {
     bb.position.copy (intersects[0].point);
     bb.rotation.x = -Math.PI/2;
     scene.add (bb);
-		bases.push (bb);
+    bases.push (bb);
   	if (myLine === null) {
-  		myLine = makeLine (bb.position);
-      scene.add (myLine);
+        myLine = makeLine (bb.position);
+        scene.add (myLine);
   	} 
     else {
     	addPoint (bb.position);
+        truck.position.copy (bb.position);
     }
   }
 
