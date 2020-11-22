@@ -56,8 +56,8 @@ function init() {
     let controls = new OrbitControls(camera, renderer.domElement);
 
     /////////////////////////////////////////////////////////////////////
-    /*var cubeMap = loadCubemap();
-    scene.background = cubeMap;*/
+    var cubeMap = loadCubemap();
+    scene.background = cubeMap;
     coke();
     leaf();
     var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
@@ -101,7 +101,7 @@ function coke(){
     bottomCover.rotation.x = -Math.PI/2;
     scene.add(body,upCover,bottomCover);
 }    
-/*function loadCubemap() {
+function loadCubemap() {
 
   var urls = [
     "http://chiching-code.github.io/html/Bridge/posx.jpg","http://chiching-code.github.io/html/Bridge/negx.jpg",
@@ -115,7 +115,7 @@ function coke(){
   cubeMap.format = THREE.RGBFormat;
   return cubeMap;
   
-}*/
+}
 function leaf(){
     let loader = new THREE.TextureLoader();
     loader.crossOrigin = '';
