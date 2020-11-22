@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #485eb5
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'>Coke Can
+  
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+
+    
+//my script  
+var camera, scene, renderer
+var leaves,leaves2,leaves3,leaves4;
+var place = 20;
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.z = 200;
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+
+    document.body.appendChild(renderer.domElement);
+    let controls = new OrbitControls(camera, renderer.domElement);
+
+    /////////////////////////////////////////////////////////////////////
+    /*var cubeMap = loadCubemap();
+    scene.background = cubeMap;*/
+    coke();
+    leaf();
+    var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
+    scene.add(gridXZ);
+
+}
+function coke(){
+    let loader = new THREE.TextureLoader();
+    loader.crossOrigin = '';
+    let texture = loader.load('https://i.imgur.com/2gsFyO5.png');
+    var points = [];
+    for(var i=0;i<10;i++){
+        points.push(new THREE.Vector2(Math.sin( i * 0.3 ) * 6 + 10,i*5 ));
+    }
+    var geometry = new THREE.LatheGeometry(points,15,0,6.3);
+    var texMat = new THREE.MeshBasicMaterial({
+        map: texture,
+        side: THREE.DoubleSide
+    });
+    var body = new THREE.Mesh(geometry, texMat);
+    body.position.set(0,0,0);
+    
+    let texture2 = loader.load('https://i.imgur.com/JZblHCI.png');
+    var geometry2 = new THREE.CircleGeometry(12.5,32);
+    var texMat2 = new THREE.MeshBasicMaterial({
+        map: texture2,
+        side: THREE.DoubleSide
+    });
+    var upCover = new THREE.Mesh(geometry2,texMat2);
+    upCover.position.set(0,45,0);
+    upCover.rotation.x = -Math.PI/2;
+    
+    let texture3 = loader.load('https://i.imgur.com/PzmwPfz.png');
+    var geometry3 = new THREE.CircleGeometry(10,32);
+    var texMat3 = new THREE.MeshBasicMaterial({
+        map: texture3,
+        side: THREE.DoubleSide
+    });
+    var bottomCover = new THREE.Mesh(geometry3,texMat3);
+    bottomCover.position.set(0,0,0);
+    bottomCover.rotation.x = -Math.PI/2;
+    scene.add(body,upCover,bottomCover);
+}    
+/*function loadCubemap() {
+
+  var urls = [
+    "http://chiching-code.github.io/html/Bridge/posx.jpg","http://chiching-code.github.io/html/Bridge/negx.jpg",
+    "http://chiching-code.github.io/html/Bridge/posy.jpg","http://chiching-code.github.io/html/Bridge/negy.jpg",
+    "http://chiching-code.github.io/html/Bridge/posz.jpg","http://chiching-code.github.io/html/Bridge/negz.jpg" 
+
+  ];
+  var loader = new THREE.CubeTextureLoader();
+  loader.setCrossOrigin ('');
+  var cubeMap = loader.load(urls);
+  cubeMap.format = THREE.RGBFormat;
+  return cubeMap;
+  
+}*/
+function leaf(){
+    let loader = new THREE.TextureLoader();
+    loader.crossOrigin = '';
+    let texture = loader.load('https://i.imgur.com/9Cq4ISD.png');
+    var texMat = new THREE.MeshBasicMaterial({
+        map: texture,
+        alphaTest:0.5,
+        side: THREE.DoubleSide
+    });
+    leaves= new THREE.Mesh(new THREE.PlaneGeometry(50,50),texMat);
+    leaves.position.set(25,50,0);
+    leaves2= new THREE.Mesh(new THREE.PlaneGeometry(50,50),texMat);
+    leaves2.position.set(-80,100,0);
+    leaves3= new THREE.Mesh(new THREE.PlaneGeometry(50,50),texMat);
+    leaves3.position.set(100,100,0);
+    leaves4= new THREE.Mesh(new THREE.PlaneGeometry(50,50),texMat);
+    leaves4.position.set(-60,100,0);
+    scene.add(leaves,leaves2,leaves3,leaves4);
+}
+
+function animate() {
+    leaves.position.y -=0.5;
+    leaves2.position.y -=0.4;
+    leaves3.position.y -=0.7;
+    leaves4.position.y -=0.4;
+    requestAnimationFrame(animate);
+    render();
+}
+
+function render() {
+    renderer.render(scene, camera);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+
+</script>
+</body>
+
+</html>

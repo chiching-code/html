@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 3vh;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffff00
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'>
+  <button id="reset" style="width:20%">Reset Track</button>
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+$("#reset").click(function() {
+  // remove all lines & points
+  lines.forEach (function (line) {scene.remove (line)});
+  pts = [];
+  points.forEach (function(point){scene.remove(point)});
+  // restore picking plane
+  pickables.push (plane);
+  plane.material.visible = true;
+});
+
+// reduce number of global variables ...
+// threejs 必要之惡
+var camera, scene, renderer;
+// for creating the track
+var plane, pickables;
+var pts, lines, points;
+
+var pts, truck;
+var ds = 0.85;
+var startPt;
+
+init();
+animate();
+    
+function readModel (modelName, targetSize=40) {
+
+    var onProgress = function(xhr) {
+        if (xhr.lengthComputable) {
+            var percentComplete = xhr.loaded / xhr.total * 100;
+            console.log(Math.round(percentComplete, 2) + '% downloaded');
+        }
+    };
+    var onError = function(xhr) {};
+
+    var mtlLoader = new MTLLoader();
+    mtlLoader.setPath('models/');
+    mtlLoader.load(modelName+'.mtl', function(materials) {
+
+        materials.preload();
+
+        var objLoader = new OBJLoader();
+        objLoader.setMaterials(materials);
+        objLoader.setPath('models/');
+        objLoader.load(modelName+'.obj', function(object) {
+
+            let theObject =  unitize (object, targetSize);
+            theObject.name = 'OBJ' 
+            theObject.position.y = 12;
+            truck = new THREE.Object3D();
+            truck.add(theObject);
+            scene.add (truck);
+        }, onProgress, onError);
+
+  });
+
+}
+
+
+////////////////////////////////////////
+// wrap an Object3D around the given object
+// so that it is centered at +Y axis
+// 
+function unitize (object, targetSize) {  
+	
+	// find bounding box of 'object'
+    var box3 = new THREE.Box3();
+	box3.setFromObject (object);
+	var size = new THREE.Vector3();
+	size.subVectors (box3.max, box3.min);
+	var center = new THREE.Vector3();
+    center.addVectors(box3.max, box3.min).multiplyScalar (0.5);
+	
+	console.log ('center: ' + center.x + ', '+center.y + ', '+center.z );
+	console.log ('size: ' + size.x + ', ' +  size.y + ', '+size.z );
+	
+	// uniform scaling according to objSize
+	var objSize = Math.max (size.x, size.y, size.z);
+	var scaleSet = targetSize/objSize;
+				
+	var theObject =  new THREE.Object3D();
+	theObject.add (object);
+	object.scale.set (scaleSet, scaleSet, scaleSet);
+	object.position.set (-center.x*scaleSet, -center.y*scaleSet, -center.z*scaleSet);
+	
+	return theObject;
+			
+}
+
+function init() {
+
+    scene = new THREE.Scene();
+
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+    document.body.appendChild(renderer.domElement);
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.set (0, 400,400);
+    let controls = new OrbitControls(camera, renderer.domElement);
+
+    var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
+    scene.add(gridXZ);
+
+    /////////////////////////////////////////////////////////////////////
+    pts = [new THREE.Vector3 (-20, 0, 30), new THREE.Vector3 (20, 0, 30), new THREE.Vector3 (-20, 0, -30)];
+    truck = new THREE.Mesh (new THREE.CircleGeometry (10,20), new THREE.MeshBasicMaterial({color:'cyan'}));
+    truck.rotation.x = -Math.PI/2;
+    scene.add (truck);
+
+  // 所剩下的initialization 
+  startPt = 0;
+  truck.position.copy (pts[startPt]);
+  animate.stepCount = 0;
+
+    plane = new THREE.Mesh(new THREE.PlaneGeometry(200, 200), new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.5,
+    visible: true
+    }));
+    scene.add(plane);
+    plane.rotation.x = -Math.PI / 2;
+    pickables = [plane];
+
+    document.addEventListener('pointerdown', onDocumentMouseDown, false);
+
+    pts = [];
+    lines = [];
+    points = [];
+}
+
+function makePoint (pos) {
+    var p = new THREE.Mesh (new THREE.CircleGeometry (5,20), 
+    new THREE.MeshBasicMaterial({color:'cyan'}));
+    p.rotation.x = -Math.PI/2;
+    p.position.copy (pos);
+    return p;
+}
+
+function makeLine (p1, p2) {
+    var geometry = new THREE.Geometry();
+    geometry.vertices.push (p1.clone(), p2.clone());
+    var line = new THREE.Line(geometry, new THREE.LineBasicMaterial({
+        color: 'yellow'
+    }));
+    return line;	
+}
+
+function onDocumentMouseDown(event) {
+
+  // PICKING DETAILS: 
+  // convert mouse.xy = [-1,1]^2 (NDC)
+  // unproject (mouse.xy, 1) to a point on the far plane (in world coordinate)
+  // set raycaster (origin, direction)
+  // find intersection objects, (closest first) 
+  // each record as
+  // [ { distance, point, face, faceIndex, object }, ... ]
+
+    if (event.button === 2) {  
+        // add line connecting last to first point
+        let line = makeLine(pts[0], pts[pts.length-1]);
+        lines.push (line);
+        scene.add (line);
+
+        // remove picking plane
+        pickables = [];
+        plane.material.visible = false;
+        return;
+    }
+  
+    event.preventDefault();
+    let mouse = new THREE.Vector2();
+    let raycaster = new THREE.Raycaster();
+
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // find intersections
+    raycaster.setFromCamera(mouse, camera);
+    var intersects = raycaster.intersectObjects(pickables);
+    if (intersects.length > 0) {
+    pts.push (intersects[0].point.clone() );
+    let point = makePoint (pts[pts.length-1]); 
+    points.push (point);
+    scene.add (point);
+    if (pts.length > 1) {
+        let line = makeLine (pts[pts.length-1], pts[pts.length-2]);
+        lines.push (line);
+        scene.add (line);
+    }
+    }
+}
+
+
+function animate() {
+
+  requestAnimationFrame(animate);
+
+  if (animate.stepCount >= 1e4) { // reaches the end
+  	startPt = (startPt+1)%pts.length;
+  	truck.position.copy (pts[startPt]);
+  	animate.stepCount = 0;
+
+  	return;
+  }
+    
+  // 雖然有重複計算之弊，但為了減少全域變數，犧牲了一些效率
+  var p1 = pts[startPt];
+  var p2 = pts[(startPt+1)%pts.length];  	
+  var dMove = p2.clone().sub(p1).setLength(ds);
+  var stepsRequired = Math.floor(p2.distanceTo(p1)/ds);
+
+  truck.position.add (dMove);
+  ++animate.stepCount;
+  if (animate.stepCount > stepsRequired) {
+     animate.stepCount = 2e4;
+     truck.position.copy (p2);
+  } 
+
+  renderer.render(scene, camera);
+
+
+}
+
+
+
+</script>
+</body>
+
+</html>
