@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    color: #cfd7e6;
+}
+
+body {
+    overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'>running
+  
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+
+    
+//my script  
+var camera, scene, renderer;
+var count = 0;
+var mesh,reverseMesh;
+
+init();
+animate();
+
+function buildGeometry() {
+  var geometry = new THREE.Geometry();
+  geometry.vertices.push(
+    new THREE.Vector3(-10, -10, 0),
+    new THREE.Vector3(10, -10, 0),
+    new THREE.Vector3(10, 10, 0),
+    new THREE.Vector3(-10, 10, 0)
+  );
+
+  var face;
+  face = new THREE.Face3(0, 1, 2);
+  geometry.faces.push(face);
+  face = new THREE.Face3(0, 2, 3);
+  geometry.faces.push(face);
+
+  var st0 = new THREE.Vector2(0, 0);
+  var st1 = new THREE.Vector2(1/7, 0);
+  var st2 = new THREE.Vector2(1/7, 1);
+  var st3 = new THREE.Vector2(0, 1);
+  geometry.faceVertexUvs[0].push([st0, st1, st2]);
+  geometry.faceVertexUvs[0].push([st0, st2, st3]);
+
+  geometry.computeBoundingSphere();
+  geometry.computeFaceNormals();
+  geometry.computeVertexNormals();
+  return geometry;
+}
+
+function init() {
+
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 100;
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+
+    document.body.appendChild(renderer.domElement);
+    let controls = new OrbitControls(camera, renderer.domElement);
+    var gridXZ = new THREE.GridHelper(400, 20, 'red', 'white');
+    scene.add(gridXZ);
+    ////////////////////////////////////////////////////////////
+    // instantiate a loader
+    var loader = new THREE.TextureLoader();
+    var frameTexture = loader.load('https://i.imgur.com/cbI8xgv.png');
+    var frameTexMat = new THREE.MeshBasicMaterial({
+        alphaTest:0.5,
+        map: frameTexture,
+        side: THREE.DoubleSide
+    });
+    var frame = new THREE.Mesh(new THREE.PlaneGeometry(100,100), frameTexMat);
+    frame.position.set(0,42,0);
+    scene.add(frame);
+    // load a resource
+    loader.load(
+    // resource URL
+    'https://i.imgur.com/TSxu83Z.png',
+    // Function when resource is loaded
+    function(texture) {
+        // do something with the texture
+        // Plane with default texture coordinates [0,1]x[0,1]
+        var texMat = new THREE.MeshBasicMaterial({
+            alphaTest:0.5,
+            map: texture,
+            side: THREE.DoubleSide
+        });
+        mesh = new THREE.Mesh(buildGeometry(), texMat);
+        mesh.position.set(-25,20,0);
+        reverseMesh = mesh.clone();
+        reverseMesh.position.set(25,50,0);
+        reverseMesh.rotation.y = Math.PI;
+        reverseMesh.scale.set(0.75,0.75,0.75);
+        scene.add(mesh,reverseMesh);
+        texture.wrapS = THREE.RepeatWrapping;
+    },
+        undefined,
+    // Function called when download errors
+    function(xhr) {
+        console.log('An error happened');
+    }
+    );
+
+    window.addEventListener('resize', onWindowResize, false);
+}
+
+function onWindowResize() {
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function textureAnimate() {
+    if (mesh) {
+        var texture = mesh.material.map;
+        texture.offset.x += 1/7;
+    }
+}
+function moving(){
+    var step1 = count%200,step2 = count%200;
+    if(mesh){
+        if(step1 === 0)
+            mesh.position.x = -25;
+        else
+            mesh.position.x += 0.25;
+    }
+    if(reverseMesh){
+        if(step2 === 0)
+            reverseMesh.position.x = 25;
+        else
+            reverseMesh.position.x -= 0.25;
+    }
+}
+function animate() {
+    count++;
+    if (count % 18 === 0) {  // a crude way to set animation frequency
+        textureAnimate();
+    }
+    moving(count);
+    requestAnimationFrame(animate);
+    render();
+}
+
+function render() {
+  renderer.render(scene, camera);
+}
+
+
+
+
+</script>
+</body>
+
+</html>

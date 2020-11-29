@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    color: #cfd7e6;
+}
+
+body {
+    overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'>tree
+  
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+
+    
+//my script  
+var camera, scene, renderer,controls;
+var trees;
+init();
+animate();
+
+function init() {
+    scene = new THREE.Scene();
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 2000);
+    camera.position.z = 400;
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+
+    document.body.appendChild(renderer.domElement);
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.autoRotate = true;
+    /////////////////////////////////////////////////////////////////////
+    var cubeMap = loadCubemap();
+    scene.background = cubeMap;
+    cherryBlossoms();
+    var gridXZ = new THREE.GridHelper(400, 20, 'red', 'white');
+    scene.add(gridXZ);
+
+}
+ 
+function cherryBlossoms(){
+    let loader = new THREE.TextureLoader();
+    loader.crossOrigin = '';
+    let texture = loader.load('https://i.imgur.com/qzU21eA.png');
+    var texMat = new THREE.MeshBasicMaterial({
+        map: texture,
+        alphaTest:0.5,
+        side: THREE.DoubleSide
+    });
+    var tree = new THREE.Mesh(new THREE.PlaneGeometry(100,100),texMat);
+    trees = [];
+    for (let i = 0; i < 15; i++) {
+        let tt = tree.clone();
+        tt.position.set ((-1+Math.random()*2)*180, 46.5, (-1+Math.random()*2)*180);
+        trees.push (tt);
+        scene.add (tt);
+    }
+}
+function loadCubemap() {
+
+  var urls = [
+    "http://chiching-code.github.io/html/Bridge/posx.jpg","http://chiching-code.github.io/html/Bridge/negx.jpg",
+    "http://chiching-code.github.io/html/Bridge/posy.jpg","http://chiching-code.github.io/html/Bridge/negy.jpg",
+    "http://chiching-code.github.io/html/Bridge/posz.jpg","http://chiching-code.github.io/html/Bridge/negz.jpg" 
+
+  ];
+  var loader = new THREE.CubeTextureLoader();
+  loader.setCrossOrigin ('');
+  var cubeMap = loader.load(urls);
+  cubeMap.format = THREE.RGBFormat;
+  return cubeMap;
+  
+}
+
+
+function animate() {
+    controls.update();
+	trees.forEach (function(t) {t.lookAt (camera.position.clone().projectOnPlane(new THREE.Vector3(0,1,0)).add(new THREE.Vector3(0,50,0)))});
+    requestAnimationFrame(animate);
+    render();
+}
+
+function render() {
+    renderer.render(scene, camera);
+}
+
+
+
+
+</script>
+</body>
+
+</html>
