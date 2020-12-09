@@ -32,8 +32,7 @@ body {
 
 import * as THREE from 'https://unpkg.com/three/build/three.module.js';
 import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
-import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
-import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
 
 
     
@@ -147,8 +146,8 @@ function buildGeometry() {
   geometry.faces.push(face);
 
   var st0 = new THREE.Vector2(0, 0);
-  var st1 = new THREE.Vector2(1/5, 0);
-  var st2 = new THREE.Vector2(1/5, 1);
+  var st1 = new THREE.Vector2(0.18, 0);
+  var st2 = new THREE.Vector2(0.18, 1);
   var st3 = new THREE.Vector2(0, 1);
   geometry.faceVertexUvs[0].push([st0, st1, st2]);
   geometry.faceVertexUvs[0].push([st0, st2, st3]);
