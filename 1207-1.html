@@ -43,6 +43,7 @@ $('#start').click ( function() {
     clockOn = true;
     setTimeout (countDown, 0);
     counter = 5;
+    flag = true;
 });  
 //my script  
 
@@ -50,8 +51,7 @@ $('#start').click ( function() {
 var camera, scene, renderer;
 var plane, oldColor;
 var lit = true;
-var count=0;
-var mesh;
+var mesh,flag;
 
 init();
 animate();
@@ -153,29 +153,28 @@ function countDown() {
 
     $('#msg').text (counter);
     --counter;
-
-
-    if (counter < 0 && counter >-2 ){
+    
+    if(counter === -1){
         blinker();
-        $('#msg').text ('blingbling');
     }
-    if(counter === -2)
-        $('#msg').text ('blingbling');
         
-    if (counter < -2){
-        clockOn = false;
-        $('#msg').text ('finish');
-    }
 }
 function blinker() {
-    if (lit === true)
-        plane.material.color.setHSL (oldColor.h, oldColor.s, 1.0);
-    else
-        plane.material.color.setHSL (oldColor.h, oldColor.s, oldColor.l);  
-    lit = ! lit;
+    setTimeout (blinkForTwoSec, 2000);
+    if(flag === true){
+        if (lit === true)
+            plane.material.color.setHSL (oldColor.h, oldColor.s, 1.0);
+        else
+            plane.material.color.setHSL (oldColor.h, oldColor.s, oldColor.l);  
+        lit = ! lit;
 
-    if (clockOn)
-        setTimeout (blinker, 200);
+        if (clockOn)
+            setTimeout (blinker, 200);
+    }
+    else clockOn = false;
+}
+function blinkForTwoSec(){
+    flag = false;
 }
 
 
