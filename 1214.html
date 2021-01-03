@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffffff;
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'><br><h1>Boom Boom</h1><br>
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+
+var scene, camera, renderer;
+var sceneHUD, cameraHUD;
+var aframe;
+var whRatio,halfH,halfW;
+var keyboard;
+var spheres;
+var shootDirection = [new THREE.Vector3(0, 0, 0),], bullets = [];
+var zoom,fovY0, fovY1;
+var cube1,cube2;
+init();
+animate();
+
+function init() {
+    keyboard = new KeyboardState();
+    scene = new THREE.Scene();
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.z = 200;
+    cameraHUD = new THREE.OrthographicCamera(-10, 10, 10, -10, -10, 1000);
+    cameraHUD.position.z = 200;
+
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+    document.body.appendChild(renderer.domElement);
+
+    fovY0 = 60; // wide
+    fovY1 = 10; // zoom
+    zoom = false;
+    
+    let controls = new OrbitControls(camera, renderer.domElement);
+    var light = new THREE.PointLight(0xffffff);
+    light.position.set(100, 300, 200);
+    scene.add(light);
+
+    var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
+    scene.add(gridXZ);
+
+    window.addEventListener('resize', onWindowResize, false);
+
+    //////////////////////////////////////////////////////////
+    cube1 = new THREE.Mesh(new THREE.BoxGeometry(20, 20, 20),
+        new THREE.MeshLambertMaterial({
+        color: 0xff1234
+    }));
+    cube1.position.x = -60;
+    scene.add(cube1);
+
+    cube2 = cube1.clone();
+    cube2.material = new THREE.MeshLambertMaterial({
+    color: 0x2134ff
+    });
+    cube2.position.x = 60;
+    scene.add(cube2);
+    ////////////////////////////////////////////////////////// 
+    renderer.autoClear = false;
+    sceneHUD = new THREE.Scene();
+
+    whRatio = window.innerWidth / window.innerHeight;
+    halfH = 10;
+    halfW = whRatio * halfH;
+
+    aframe = new THREE.Group();
+
+    var loader = new THREE.TextureLoader();
+    var texture = loader.load('https://i.imgur.com/WWBpfnU.png');
+    var texMat = new THREE.MeshBasicMaterial({
+        alphaTest:0.5,
+        map: texture,
+        side: THREE.DoubleSide,
+        depthTest: false
+    });
+    var gun = new THREE.Mesh(new THREE.PlaneGeometry(15,20), texMat); 
+
+    sceneHUD.add(aframe);
+    aframe.add(gun);
+    aframe.position.set(0, -(halfH - halfW / 5.5)+5, 0);
+
+    var bulletGeometry = new THREE.SphereGeometry( 2, 32, 32 );
+	var bulletMaterial = new THREE.MeshBasicMaterial( {color: 0xb54b43} );
+	var bullet = new THREE.Mesh( bulletGeometry, bulletMaterial );
+	bullets.push(bullet);
+    
+    document.addEventListener('mousedown', hudButtonPick, false);
+    shootingAnimate();
+}
+
+function onWindowResize() {
+    // renderer resize
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    whRatio = window.innerWidth / window.innerHeight;
+
+    // perspective camera resize
+    camera.aspect = whRatio;
+    camera.updateProjectionMatrix();
+
+    // orthographic camera resize
+    halfH = 20;
+    halfW = halfH * whRatio;
+
+    cameraHUD.left = -halfW;
+    cameraHUD.right = halfW;
+    cameraHUD.top = halfH;
+    cameraHUD.bottom = -halfH;
+    cameraHUD.updateProjectionMatrix();
+
+    // HUD geometry relatively resized & placed 
+    aframe.position.set(0, -(halfH - halfW / 10), 0)
+    aframe.children[0].geometry = new THREE.PlaneGeometry(2 * halfW, 2 * halfW / 10);
+    //aframe.children[1].geometry = new THREE.CircleGeometry(halfW / 15, 30);
+}
+
+function hudButtonPick (event) {
+	// convert to NDC
+	let ndcX = (event.clientX / window.innerWidth) * 2 - 1;
+    let ndcY = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    // convert to HUD scene coordinate
+    let halfW = cameraHUD.right;
+    let halfH = cameraHUD.top;
+    let xx = ndcX * halfW;
+    let yy = ndcY * halfH;
+
+    // button location: (0, - (halfH- halfW/10))
+    let buttonCenter = new THREE.Vector2 (0, -(halfH-halfW/10));
+    let mouse = new THREE.Vector2 (xx, yy);
+    if (mouse.distanceTo (buttonCenter) < halfW/15) 
+        console.log ('hit');
+    else
+        console.log ('miss');
+
+}
+    
+function newBullet(){
+	var bb = bullets[0].clone();
+	bullets.push(bb);
+	scene.add(bb);
+	bb.position.copy(camera.clone().position);
+    //bb.position.y = -10;
+	
+	var direction = new THREE.Vector3();
+	camera.getWorldDirection(direction);
+	shootDirection.push(direction);
+	
+	bb.position.x += direction.x * 20;
+	bb.position.y += direction.y * 20;
+	bb.position.z += direction.z * 20;
+}
+
+function shootingAnimate(){
+	var speed = 10;
+	for(let i = 1;i < bullets.length;i++){
+		if(bullets[i]){
+			//moving
+			bullets[i].position.x += shootDirection[i].x * speed;
+			bullets[i].position.y += shootDirection[i].y * speed;
+			bullets[i].position.z += shootDirection[i].z * speed;
+			
+            if(bullets[i].position.distanceTo(cube1) < 20){
+				cube1.visible = false;
+                bullets[i].visible = false;
+            }
+            if(bullets[i].position.distanceTo(cube2) < 20){
+				cube2.visible = false;
+                bullets[i].visible = false;
+            }
+
+			
+			//out of range
+			if(bullets[i].position.x > 200 | bullets[i].position.x < -200 | 
+			bullets[i].position.z > 200 | bullets[i].position.z < -200){
+				bullets[i].visible = false;
+			}
+			
+		}
+	}
+	setTimeout (shootingAnimate, 100);
+}
+
+function explosion(target){
+    if(target.visible){
+        target.material.visible = false;
+    }
+}
+function animate() {
+    keyboard.update();
+
+    if (keyboard.down ('up')) {
+        camera.position.y += 10;
+    } 
+    else if (keyboard.down ('down')) {
+        camera.position.y -= 10;
+    } 
+    else if (keyboard.down ('right')) {
+        camera.position.x += 10;
+    } 
+    else if (keyboard.down ('left')) {
+        camera.position.x -= 10;
+    }
+    else if(keyboard.down('space')){//space to shoot
+		newBullet();
+	}
+    
+    if (keyboard.pressed('space')) {
+        zoom = true;
+    } 
+    else {
+        zoom = false;
+    }
+
+    if (zoom) {
+        camera.fov = fovY1;
+    } 
+    else {
+        camera.fov = fovY0;  
+    }
+    camera.updateProjectionMatrix();
+  
+    renderer.clear(true);
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+    renderer.render(sceneHUD, cameraHUD);
+
+}
+
+
+</script>
+</body>
+
+</html>
