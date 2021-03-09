@@ -193,11 +193,11 @@ function shootingAnimate(){
 			bullets[i].position.y += shootDirection[i].y * speed;
 			bullets[i].position.z += shootDirection[i].z * speed;
 			
-            if(bullets[i].position.distanceTo(cube1) < 20){
+            if(bullets[i].position.distanceTo(cube1.position) < 20){
 				cube1.visible = false;
                 bullets[i].visible = false;
             }
-            if(bullets[i].position.distanceTo(cube2) < 20){
+            if(bullets[i].position.distanceTo(cube2.position) < 20){
 				cube2.visible = false;
                 bullets[i].visible = false;
             }
@@ -238,7 +238,7 @@ function animate() {
 		newBullet();
 	}
     
-    if (keyboard.pressed('space')) {
+    if (keyboard.pressed('shift')) {
         zoom = true;
     } 
     else {
