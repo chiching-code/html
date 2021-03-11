@@ -150,13 +150,13 @@ function animate() {
             train.position.set(radius * Math.cos(angle)+50, 5,-radius * Math.sin(angle));
             train.rotation.y = angle;
             
-            angle += 2*0.10472*dt;
+            angle += 2.09439*dt;
             if(train.position.x < 50){
                 status = 1;
             }
         }
         else if(status == 1){
-            train.position.x -= 0.10472;
+            train.position.x -= 0.6667;
             if(train.position.x < -50){
                 status = 2;
             }   
@@ -165,13 +165,13 @@ function animate() {
             train.position.set(radius * Math.cos(angle)-50, 5,-radius * Math.sin(angle));
             train.rotation.y = angle;
             
-            angle += 2*0.10472*dt;
+            angle += 2.09439*dt;
             if(train.position.x > -50){
                 status = 3;
             }
         }
         else if(status == 3){
-            train.position.x += 0.10472;
+            train.position.x += 0.6667;
             if(train.position.x > 50){
                 status = 0;
             }
