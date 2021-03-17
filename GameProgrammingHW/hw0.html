@@ -155,7 +155,7 @@ function animate() {
             }
         }
         else if(status == 1){
-            train.position.x -= 0.6667;
+            train.position.x -= 80*dt;
             if(train.position.x < -50){
                 status = 2;
             }   
@@ -170,7 +170,7 @@ function animate() {
             }
         }
         else if(status == 3){
-            train.position.x += 0.6667;
+            train.position.x += 80*dt;
             if(train.position.x > 50){
                 status = 0;
             }
