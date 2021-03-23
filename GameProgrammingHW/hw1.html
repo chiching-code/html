@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+<style>
+#info {
+    position: absolute;
+    top: 0px;
+    width: 100%;
+    padding: 10px;
+    text-align: center;
+    color: #b8e1f2;
+}
+
+body {
+  overflow: hidden;
+}
+
+
+</style>
+</head>
+
+<body> 
+<div id='info'>
+    <h1>Game Physics</h1>
+</div>
+
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script type='module'>
+
+import * as THREE from 'https://unpkg.com/three/build/three.module.js';
+import { OrbitControls } from 'https://unpkg.com/three/examples/jsm/controls/OrbitControls.js';
+import { MTLLoader } from 'https://unpkg.com/three/examples/jsm/loaders/MTLLoader.js';
+import { OBJLoader } from 'https://unpkg.com/three/examples/jsm/loaders/OBJLoader.js';
+
+
+var scene, camera, renderer,controls;
+    
+var light, light2;
+var angle = 0;
+var puck, puck2;
+
+var balls = [];
+    
+const R = 4;
+    
+class Ball {
+   constructor (pos, vel, mesh) {
+      this.pos = pos;
+      this.vel = vel;
+      this.force = new THREE.Vector3(0,-5,0);
+      this.mesh = mesh;
+      scene.add (this.mesh);
+      
+      mesh.material.color = new THREE.Color().setHSL (Math.random(), 0.5, .7);
+   }
+   
+   update(dt) {
+  	this.vel.add (this.force.clone().multiplyScalar (dt));
+  	this.pos.add (this.vel.clone().multiplyScalar (dt));
+  
+    // wall-collision
+  if (this.pos.y < -40+R) {
+  	 this.vel.y = - this.vel.y;
+     
+     this.pos.y = -40+R;
+  }
+  if (this.pos.x > 40-R) {
+  	 this.vel.x = - this.vel.x;
+     
+     this.pos.x = 40-R;
+  }
+ if (this.pos.x < -40+R) {
+  	 this.vel.x = - this.vel.x;
+     
+     this.pos.x = -40+R;
+  }
+
+	this.mesh.position.copy (this.pos);
+   
+   }
+
+}
+
+function buildBallMesh (mycolor) {
+  let ballMesh = new THREE.Mesh (new THREE.CircleGeometry(R,20), new THREE.MeshBasicMaterial());
+  ballMesh.material.color = mycolor;
+  return ballMesh;
+}
+    
+init();
+animate();
+
+function init() {
+
+    scene = new THREE.Scene();
+
+    renderer = new THREE.WebGLRenderer();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setClearColor(0x888888);
+    document.body.appendChild(renderer.domElement);
+
+    camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 1, 1000);
+    camera.position.set (0,400,500);
+    controls = new OrbitControls(camera, renderer.domElement);
+
+
+    var floor = new THREE.Mesh (new THREE.PlaneGeometry(200,200), new THREE.MeshPhongMaterial({side: THREE.DoubleSide}));
+    floor.rotation.x = -Math.PI/2;
+    scene.add (floor);
+    ////////////////////////////////////////////////////////
+    light = new THREE.PointLight( 0xffffff, 1);
+    light.position.set( 50, 50, 50 );
+    scene.add( light );
+    let puckMat = new THREE.MeshBasicMaterial();
+    puckMat.color = new THREE.Color().setHSL (173/360,.98,.44);
+
+    puck = new THREE.Mesh (new THREE.CylinderGeometry(10,10,4,20), puckMat);
+    scene.add (puck);
+
+    light.color.copy (puckMat.color);
+
+
+    light2 = new THREE.PointLight( 0xffffff, 1);
+    light2.position.set( 50, 50, 50 );
+    scene.add( light2 );
+    let puckMat2 = new THREE.MeshBasicMaterial();
+    puckMat2.color = new THREE.Color().setHSL (302/360,.98,.44);
+
+    puck2 = new THREE.Mesh (new THREE.CylinderGeometry(10,10,4,20), puckMat2);
+    scene.add (puck2);
+
+    light2.color.copy (puckMat2.color);
+    
+    walls();
+    
+    let ballMesh = buildBallMesh (new THREE.Color().setHSL (Math.random(), .9, .4));
+  
+    let ball = new Ball (new THREE.Vector3(0,10,0), new THREE.Vector3(-4,2,0), ballMesh);
+	balls.push (ball);
+
+    ballMesh = buildBallMesh (new THREE.Color().setHSL (Math.random(), .9, .4));
+  
+    let ball2 = new Ball (new THREE.Vector3(10,30,0), new THREE.Vector3(4,2,0), ballMesh);
+
+	balls.push (ball2);
+    
+    
+}
+ 
+
+
+function walls(){
+    
+    var wall = new THREE.Mesh (new THREE.BoxGeometry(240,20, 20), new THREE.MeshBasicMaterial({color:"pink", transparent: true, opacity:0.4}));//front
+    scene.add (wall);
+    wall.position.set(0,10,110);
+    
+    var wall2 = new THREE.Mesh (new THREE.BoxGeometry(240,20, 20), new THREE.MeshBasicMaterial({color:"pink", transparent: true, opacity:0.4}));//back
+    scene.add (wall2);
+    wall2.position.set(0,10,-110);
+    
+    var wall3 = new THREE.Mesh (new THREE.BoxGeometry(200,20, 20), new THREE.MeshBasicMaterial({color:"pink", transparent: true, opacity:0.4}));//left
+    scene.add (wall3);
+    wall3.rotation.y = Math.PI/2;
+    wall3.position.set(-110,10,0);
+    
+    var wall4 = new THREE.Mesh (new THREE.BoxGeometry(200,20, 20), new THREE.MeshBasicMaterial({color:"pink", transparent: true, opacity:0.4}));//right
+    scene.add (wall4);
+    wall4.rotation.y = Math.PI/2;
+    wall4.position.set(110,10,0);
+    
+}
+
+
+function animate() {
+    puck.position.set (40*Math.cos(angle)-30, 2, 40*Math.sin(angle));
+    angle += 0.1;
+    puck2.position.set (40*Math.cos(-angle)+30, 2, 40*Math.sin(-angle));
+
+    light.position.copy (puck.position);
+    light.position.y += 12;
+
+    light2.position.copy (puck2.position);
+    light2.position.y += 12;
+    
+    
+    var dt = 0.1;
+    for (let i = 0; i < balls.length; i++)
+  	 balls[i].update (dt);
+    
+    controls.update();
+    requestAnimationFrame(animate);
+    renderer.render(scene, camera);
+    
+}
+
+
+</script>
+</body>
+
+</html>
