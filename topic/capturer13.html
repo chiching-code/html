@@ -266,7 +266,7 @@
 							);
 							super.setSeekTarget(findP(c));*/
 						}
-						if (this.fsm.state === "goTo") {
+						if (this.fsm.state === "touchDown") {
 							if (get === true) {
 								flag.position.set(this.pos.x, 10, this.pos.z);
 							}
@@ -302,7 +302,7 @@
 							this.stateSign.children[1].material.visible = false;
 							this.stateSign.children[3].material.visible = false;
 						}
-						if (this.fsm.state === "goTo") {
+						if (this.fsm.state === "touchDown") {
 							this.stateSign.children[3].material.visible = true;
 							this.stateSign.children[0].material.visible = false;
 							this.stateSign.children[1].material.visible = false;
@@ -351,10 +351,14 @@
 						{ name: "soldierFlag", from: "search", to: "search" },
 						{ name: "attacked", from: "snatch", to: "hide" },
 						{ name: "attacked", from: "search", to: "hide" },
-						{ name: "attacked", from: "goTo", to: "hide" },
+						{ name: "attacked", from: "touchDown", to: "hide" },
 						{ name: "attacked", from: "hide", to: "hide" },
-						{ name: "takeFlag", from: "snatch", to: "goTo" },
-						{ name: "takeFlag", from: "goTo", to: "goTo" },
+						{ name: "takeFlag", from: "snatch", to: "touchDown" },
+						{
+							name: "takeFlag",
+							from: "touchDown",
+							to: "touchDown",
+						},
 					],
 				});
 				return fsm;
@@ -448,7 +452,9 @@
 				let snatchMap = loader.load("https://i.imgur.com/L67LiqY.png");
 				let searchMap = loader.load("https://i.imgur.com/ui0cEeC.png");
 				let hideMap = loader.load("https://i.imgur.com/BRChBw1.png");
-				let goToMap = loader.load("https://i.imgur.com/D1MIaxq.png");
+				let touchDownMap = loader.load(
+					"https://i.imgur.com/D1MIaxq.png"
+				);
 				let snatchMesh = new THREE.Mesh(
 					new THREE.PlaneGeometry(35, 30),
 					new THREE.MeshBasicMaterial({
@@ -476,17 +482,22 @@
 						side: THREE.DoubleSide,
 					})
 				);
-				let goToMesh = new THREE.Mesh(
+				let touchDownMesh = new THREE.Mesh(
 					new THREE.PlaneGeometry(35, 30),
 					new THREE.MeshBasicMaterial({
-						map: goToMap,
+						map: touchDownMap,
 						transparent: true,
 						alphaTest: 0,
 						side: THREE.DoubleSide,
 					})
 				);
 				let preyStateSign = new THREE.Group();
-				preyStateSign.add(snatchMesh, searchMesh, hideMesh, goToMesh);
+				preyStateSign.add(
+					snatchMesh,
+					searchMesh,
+					hideMesh,
+					touchDownMesh
+				);
 				return preyStateSign;
 			}
 			function init() {
@@ -569,7 +580,7 @@
 
 				scene.obstacles = [];
 				scene.obstacles.push(
-					new Obstacle(new THREE.Vector3(50, 0, 50), 15)
+					new Obstacle(new THREE.Vector3(50, 0, 50), 30)
 				);
 				scene.obstacles.push(
 					new Obstacle(new THREE.Vector3(-50, 0, 40), 15)
@@ -627,9 +638,9 @@
 				var min = findMin(distance, distance1);
 				min = findMin(min, distance2);
 
-				if (min === distance) return scene.obstacles[0].mesh.position;
-				if (min === distance1) return scene.obstacles[1].mesh.position;
-				if (min === distance2) return scene.obstacles[2].mesh.position;
+				if (min === distance) return scene.obstacles[0];
+				if (min === distance1) return scene.obstacles[1];
+				if (min === distance2) return scene.obstacles[2];
 			}
 
 			function findP(c) {
@@ -637,10 +648,11 @@
 				var cp = new THREE.Vector3();
 				var csDis = c.position.distanceTo(predictor.pos);
 				var theta;
-				theta = Math.acos(15 / csDis); //cp = 15
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
 				var cs = new THREE.Vector3();
 				cs.subVectors(c.position, predictor.pos);
-				cp = cs.setLength(15);
+				cp = cs.setLength(r);
 				cp.applyAxisAngle(axis, theta);
 				var p = new THREE.Vector3();
 				p.subVectors(c.position, cp);
@@ -655,10 +667,11 @@
 				var cp1 = new THREE.Vector3();
 				var csDis = c.position.distanceTo(predictor.pos);
 				var theta;
-				theta = Math.acos(15 / csDis); //cp = 15
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
 				var cs = new THREE.Vector3();
 				cs.subVectors(c.position, predictor.pos);
-				cp1 = cs.setLength(15);
+				cp1 = cs.setLength(r);
 				cp1.applyAxisAngle(axis, -theta);
 				var p1 = new THREE.Vector3();
 				p1.subVectors(c.position, cp1);
@@ -748,7 +761,11 @@
 				var disToSoldier = prey.pos.distanceTo(predictor.pos);
 
 				var c = new THREE.Mesh();
-				c.position.set(nearObstacle().x, 0, nearObstacle().z);
+				c.position.set(
+					nearObstacle().mesh.position.x,
+					0,
+					nearObstacle().mesh.position.z
+				);
 
 				point = new THREE.Mesh();
 				point.position.set(120.0, 0);
