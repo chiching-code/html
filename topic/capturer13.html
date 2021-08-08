@@ -453,7 +453,7 @@
 				let searchMap = loader.load("https://i.imgur.com/ui0cEeC.png");
 				let hideMap = loader.load("https://i.imgur.com/BRChBw1.png");
 				let touchDownMap = loader.load(
-					"https://i.imgur.com/D1MIaxq.png"
+					"https://i.imgur.com/lJ95E9L.png"
 				);
 				let snatchMesh = new THREE.Mesh(
 					new THREE.PlaneGeometry(35, 30),
@@ -483,7 +483,7 @@
 					})
 				);
 				let touchDownMesh = new THREE.Mesh(
-					new THREE.PlaneGeometry(35, 30),
+					new THREE.PlaneGeometry(50, 30),
 					new THREE.MeshBasicMaterial({
 						map: touchDownMap,
 						transparent: true,
@@ -604,11 +604,13 @@
 					new THREE.MeshBasicMaterial({ color: "black" })
 				);
 				scene.add(circle);
+				circle.position.set(2000, 0, 0);
 				circle1 = new THREE.Mesh(
 					new THREE.CircleGeometry(3, 20),
 					new THREE.MeshBasicMaterial({ color: "cyan" })
 				);
 				scene.add(circle1);
+				circle1.position.set(2000, 0, 0);
 			}
 			function randomPosZX(min, max) {
 				let x = min + (max - min) * Math.random();
