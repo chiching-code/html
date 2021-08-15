@@ -1,0 +1,822 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>capturer14</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<link
+			href="examples/demo/demo.css"
+			media="screen, print"
+			rel="stylesheet"
+			type="text/css"
+		/>
+	</head>
+	<style>
+		#info {
+			position: absolute;
+			top: 0px;
+			width: 100%;
+			padding: 10px;
+			text-align: center;
+			color: #f3bbe0;
+		}
+
+		body {
+			overflow: hidden;
+		}
+	</style>
+
+	<body>
+		<div id="info">
+			<h1>capturer</h1>
+			<p id="preyState"></p>
+		</div>
+
+		<script src="state-machine.js"></script>
+		<!-- script src="examples/demo/demo.js"></script-->
+		<script src="https://threejs.org/build/three.min.js"></script>
+		<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+		<script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+		<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+		<script>
+			(function () {
+				Math.clamp = function (val, min, max) {
+					return Math.min(Math.max(val, min), max);
+				};
+			})();
+
+			class Obstacle {
+				constructor(center, size) {
+					this.center = center.clone();
+					this.mesh = new THREE.Mesh(
+						new THREE.CylinderGeometry(size, size, 1, 20),
+						new THREE.MeshBasicMaterial()
+					);
+					this.mesh.position.copy(center);
+					this.size = size;
+					scene.add(this.mesh);
+				}
+			}
+
+			class Avatar {
+				constructor(pos, mesh) {
+					this.pos = pos.clone();
+					this.vel = new THREE.Vector3();
+					this.force = new THREE.Vector3();
+					this.MAXSPEED = 50;
+					this.ARRIVAL_R = 30;
+
+					this.target = null;
+					this.steermode = "";
+					this.BRAKING = 0;
+					this.size = 25;
+					this.mesh = mesh;
+					scene.add(mesh);
+
+					// for orientable agent
+					this.angle = 0;
+				}
+
+				update(dt) {
+					this.accumulateForce();
+					this.vel.add(this.force.clone().multiplyScalar(dt));
+
+					// ARRIVAL: velocity modulation
+					if (this.target !== null) {
+						let diff = this.target.clone().sub(this.pos);
+						let dst = diff.length();
+						if (dst < this.ARRIVAL_R) {
+							this.vel.setLength(dst);
+						}
+					}
+
+					// MAXSPEED modulation
+					let speed = this.vel.length();
+					this.vel.setLength(Math.clamp(speed, 0, this.MAXSPEED));
+					this.pos.add(this.vel.clone().multiplyScalar(dt));
+					this.mesh.position.copy(this.pos);
+
+					// for orientable agent
+					if (this.vel.length() > 0.1) {
+						this.angle = Math.atan2(-this.vel.z, this.vel.x);
+						this.mesh.rotation.y = this.angle;
+					}
+					// collision
+					// for all obstacles in the scene
+					let obs = scene.obstacles;
+
+					// pick the most threatening one
+					let theOne = null;
+					let dist = 1e10;
+					let vhat = this.vel.clone().normalize();
+					const REACH = 50;
+					const K = 5;
+					let perp;
+					for (let i = 0; i < obs.length; i++) {
+						let point = obs[i].center.clone().sub(this.pos); // c-p
+						let proj = point.dot(vhat);
+						if (proj > 0 && proj < REACH) {
+							perp = new THREE.Vector3();
+							perp.subVectors(
+								point,
+								vhat.clone().setLength(proj)
+							);
+							let overlap =
+								obs[i].size + this.size - perp.length();
+							if (overlap > 0 && proj < dist) {
+								theOne = obs[i];
+								dist = proj;
+								perp.setLength(K * overlap);
+								perp.negate();
+							}
+						}
+					}
+					if (theOne) this.force.add(perp);
+
+					this.vel.add(this.force.clone().multiplyScalar(dt));
+				}
+
+				// target, SEEK & FLEE
+				setSeekTarget(x, y, z) {
+					this.BRAKING = 0;
+					this.steerMode = "SEEK";
+					this._setTarget(x, y, z);
+				}
+
+				setFleeTarget(x, y, z) {
+					this.BRAKING = 0;
+					this.steerMode = "FLEE";
+					this._setTarget(x, y, z);
+				}
+
+				_setTarget(x, y, z) {
+					// do not use outside class
+					if (this.target !== null) this.target.set(x, y, z);
+					else {
+						this.target = new THREE.Vector3(x, y, z);
+					}
+				}
+
+				targetInducedForce(targetPos) {
+					let sign = 0;
+					if (this.steerMode === "SEEK") sign = 1;
+					else if (this.steerMode === "FLEE") sign = -1;
+
+					return targetPos
+						.clone()
+						.sub(this.pos)
+						.normalize()
+						.multiplyScalar(sign * this.MAXSPEED)
+						.sub(this.vel);
+				}
+
+				setBrake(brake) {
+					// make the avatar stop gracefully
+					this.BRAKING = brake;
+					this.target = null; // release target
+				}
+				accumulateForce() {
+					if (this.target)
+						this.force.copy(this.targetInducedForce(this.target));
+					else this.force.set(0, 0, 0); // for null-target initial force
+
+					// braking ...
+					this.force.add(
+						this.vel.clone().multiplyScalar(-this.BRAKING)
+					);
+				}
+			}
+
+			class Agent extends Avatar {
+				constructor(pos, mesh, name = "", fsm) {
+					super(pos, mesh);
+					this.fsm = fsm;
+					// initial state got from fsm.state;
+					this.stateSign = null;
+				}
+
+				update(dt, time) {
+					super.update(dt); // calling avatar update
+					if (this.fsm) {
+						$("#preyState").text(this.fsm.state);
+
+						if (this.fsm.state === "snatch") {
+							super.setSeekTarget(
+								flag.position.x,
+								0,
+								flag.position.z
+							);
+
+							if (
+								Math.abs(flag.position.x - this.pos.x) < 5 &&
+								Math.abs(flag.position.z - this.pos.z) < 5
+							) {
+								get = true;
+								insert = true;
+							}
+						}
+						if (this.fsm.state === "search") {
+							var angle = Math.PI / 8;
+
+							if (time < 0.5) {
+								if (count > 0.5) {
+									var vLeft = this.mesh.localToWorld(
+										new THREE.Vector3(
+											10 * Math.cos(angle),
+											0,
+											-10 * Math.sin(angle)
+										)
+									);
+									super.setSeekTarget(vLeft.x, 0, vLeft.z);
+								}
+								if (count < 0.5) {
+									var vRight = this.mesh.localToWorld(
+										new THREE.Vector3(
+											10 * Math.cos(angle),
+											0,
+											10 * Math.sin(angle)
+										)
+									);
+									super.setSeekTarget(vRight.x, 0, vRight.z);
+								}
+							} else {
+								var v2 = this.mesh.localToWorld(
+									new THREE.Vector3(10, 0, 0)
+								);
+								super.setSeekTarget(v2.x, 0, v2.z);
+							}
+
+							//super.setBrake(10);
+						}
+
+						if (this.fsm.state === "hide") {
+							insert = false;
+							/*super.setFleeTarget(
+								soldier.pos.x,
+								0,
+								soldier.pos.z
+							);*/
+
+							super.setSeekTarget(
+								30 *
+									Math.cos((pAngle + p1Angle) / 2 + Math.PI) +
+									nearObstacle().center.x,
+								0,
+								30 *
+									Math.sin((pAngle + p1Angle) / 2 + Math.PI) +
+									nearObstacle().center.z
+							);
+
+							circleA.rotation.x = -Math.PI / 2;
+							circleA.position.set(
+								30 *
+									Math.cos((pAngle + p1Angle) / 2 + Math.PI) +
+									nearObstacle().center.x,
+								0,
+								30 *
+									Math.sin((pAngle + p1Angle) / 2 + Math.PI) +
+									nearObstacle().center.z
+							);
+						}
+						if (this.fsm.state === "touchDown") {
+							if (get === true) {
+								flag.position.set(this.pos.x, 10, this.pos.z);
+							}
+							if (insert === true) {
+								super.setSeekTarget(120, 0, 0);
+							}
+						}
+					}
+					if (this.stateSign) {
+						this.stateSign.position.copy(this.pos);
+						this.stateSign.position.y = 30;
+						this.stateSign.lookAt(
+							camera.position.x,
+							10,
+							camera.position.z
+						);
+
+						if (this.fsm.state === "snatch") {
+							this.stateSign.children[0].material.visible = true;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "search") {
+							this.stateSign.children[1].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "hide") {
+							this.stateSign.children[2].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "touchDown") {
+							this.stateSign.children[3].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+						}
+					}
+				}
+				/*straight() {
+					start = true;
+					setTimeout(this.straight(), 5000);
+				}*/
+
+				findTarget(target) {
+					var point = target.position.clone().sub(this.pos);
+
+					var preyDirect = this.mesh
+						.localToWorld(new THREE.Vector3(1, 0, 0))
+						.sub(this.mesh.localToWorld(new THREE.Vector3(0, 0, 0)))
+						.normalize();
+					ray.set(this.pos, preyDirect);
+					//debugger;
+					var intersects = ray.intersectObjects(pickables2, true);
+					if (intersects.length > 0) {
+						if (intersects[0].object.name != target.name) {
+							hidden = true;
+						} else hidden = false;
+					}
+
+					var CosineValue = point.dot(preyDirect);
+					if (CosineValue > 0 && hidden === false) {
+						front = true;
+					} else {
+						front = false;
+					}
+				}
+			}
+
+			function initFSM() {
+				let fsm = new StateMachine({
+					init: "search",
+					transitions: [
+						{ name: "seeFlag", from: "search", to: "snatch" },
+						{ name: "seeFlag", from: "snatch", to: "snatch" },
+						{ name: "soldierFlag", from: "snatch", to: "search" },
+						{ name: "soldierFlag", from: "hide", to: "snatch" },
+						{ name: "soldierFlag", from: "search", to: "search" },
+						{ name: "attacked", from: "snatch", to: "hide" },
+						{ name: "attacked", from: "search", to: "hide" },
+						{ name: "attacked", from: "touchDown", to: "hide" },
+						{ name: "attacked", from: "hide", to: "hide" },
+						{ name: "takeFlag", from: "snatch", to: "touchDown" },
+						{
+							name: "takeFlag",
+							from: "touchDown",
+							to: "touchDown",
+						},
+					],
+				});
+				return fsm;
+			}
+			var scene, camera, renderer;
+			var clock;
+			var keyboard = new KeyboardState();
+			var raycaster, ray;
+			var mouse = new THREE.Vector2();
+			var pickables = [],
+				pickables2 = [];
+			var front = false,
+				hidden = false;
+			var count = 0;
+			var flag, prey, soldier;
+			var get = false,
+				insert = false,
+				attack = false;
+			var circleL, circleR, circleA;
+
+			var pAngle, p1Angle;
+			init();
+			initFSM();
+
+			animate();
+
+			function soldierMesh() {
+				let loader = new THREE.TextureLoader();
+				let icon = loader.load("https://i.imgur.com/7yl0PLz.png");
+				var soldier = new THREE.Group();
+				var mat = new THREE.MeshNormalMaterial();
+				var body = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					mat
+				);
+				var pointer = new THREE.Mesh(
+					new THREE.BoxGeometry(15, 2, 2),
+					mat
+				);
+				body.position.y = 2;
+				pointer.position.set(5, 2, 0);
+
+				// '帥'蓋
+				let iconZX = new THREE.Group();
+				let circle = new THREE.Mesh(
+					new THREE.CircleGeometry(8, 8),
+					new THREE.MeshBasicMaterial({ map: icon })
+				);
+				circle.position.y = 4;
+				circle.rotation.x = -Math.PI / 2;
+				iconZX.add(circle);
+
+				soldier.add(iconZX, pointer, body);
+				return soldier;
+			}
+
+			function capturerMesh() {
+				let loader = new THREE.TextureLoader();
+				let icon = loader.load("https://i.imgur.com/MIvqfLQ.png");
+				var capturer = new THREE.Group();
+				var mat = new THREE.MeshNormalMaterial();
+				var body = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					mat
+				);
+				var pointer = new THREE.Mesh(
+					new THREE.BoxGeometry(15, 2, 2),
+					mat
+				);
+				body.position.y = 2;
+				pointer.position.set(5, 2, 0);
+
+				// '車'蓋
+				let iconZX = new THREE.Group();
+				let circle = new THREE.Mesh(
+					new THREE.CircleGeometry(8, 8),
+					new THREE.MeshBasicMaterial({ map: icon })
+				);
+				circle.position.y = 4;
+				circle.rotation.x = -Math.PI / 2;
+				iconZX.add(circle);
+
+				capturer.add(iconZX, pointer, body);
+				return capturer;
+			}
+
+			function stateSign() {
+				let loader = new THREE.TextureLoader();
+				let snatchMap = loader.load("https://i.imgur.com/L67LiqY.png");
+				let searchMap = loader.load("https://i.imgur.com/ui0cEeC.png");
+				let hideMap = loader.load("https://i.imgur.com/BRChBw1.png");
+				let touchDownMap = loader.load(
+					"https://i.imgur.com/lJ95E9L.png"
+				);
+				let snatchMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 30),
+					new THREE.MeshBasicMaterial({
+						map: snatchMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let searchMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 20),
+					new THREE.MeshBasicMaterial({
+						map: searchMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let hideMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 30),
+					new THREE.MeshBasicMaterial({
+						map: hideMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let touchDownMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(50, 30),
+					new THREE.MeshBasicMaterial({
+						map: touchDownMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let preyStateSign = new THREE.Group();
+				preyStateSign.add(
+					snatchMesh,
+					searchMesh,
+					hideMesh,
+					touchDownMesh
+				);
+				return preyStateSign;
+			}
+			function init() {
+				clock = new THREE.Clock();
+				scene = new THREE.Scene();
+				camera = new THREE.PerspectiveCamera(
+					50,
+					window.innerWidth / window.innerHeight,
+					1,
+					1000
+				);
+				camera.position.set(0, 200, 200);
+
+				var gridXZ = new THREE.GridHelper(240, 24, "red", "white");
+				scene.add(gridXZ);
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				renderer.setClearColor(0x888888);
+
+				let controls = new THREE.OrbitControls(
+					camera,
+					renderer.domElement
+				);
+
+				document.body.appendChild(renderer.domElement);
+				document.addEventListener(
+					"pointerdown",
+					onDocumentMouseDown,
+					false
+				);
+				raycaster = new THREE.Raycaster();
+				ray = new THREE.Raycaster();
+				///////////////////////////////////////////////////////////
+				plane = new THREE.Mesh(
+					new THREE.PlaneGeometry(240, 240),
+					new THREE.MeshBasicMaterial({
+						transparent: true,
+						opacity: 0.5,
+						visible: true,
+					})
+				);
+				scene.add(plane);
+				plane.material.visible = false;
+				plane.rotation.x = -Math.PI / 2;
+				pickables = [plane];
+				///////////////////////////////////////////////////////////
+				soldier = new Agent(
+					randomPosZX(-100, 100),
+					soldierMesh(),
+					"T-Rex"
+				);
+
+				prey = new Agent(
+					randomPosZX(-100, 100),
+					capturerMesh(),
+					"sheep",
+					initFSM()
+				);
+				prey.stateSign = stateSign();
+				scene.add(prey.stateSign);
+
+				///////////////////////////////////////////////////////////
+				let loader = new THREE.TextureLoader();
+				loader.crossOrigin = "";
+				let tex = loader.load("https://i.imgur.com/8SMMBtP.png");
+				flag = new THREE.Mesh(
+					new THREE.CircleGeometry(10, 20),
+					new THREE.MeshBasicMaterial({
+						map: tex,
+						transparent: true,
+						side: THREE.DoubleSide,
+					})
+				);
+				flag.position.set(0, 8, 0);
+				scene.add(flag);
+				flag.name = "flag";
+
+				scene.obstacles = [];
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(50, 0, 50), 30)
+				);
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(-50, 0, 40), 15)
+				);
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(0, 0, -60), 15)
+				);
+				scene.obstacles[0].mesh.name = "obstacles";
+				scene.obstacles[1].mesh.name = "obstacles";
+				scene.obstacles[2].mesh.name = "obstacles";
+				pickables2.push(
+					flag,
+					scene.obstacles[0].mesh,
+					scene.obstacles[1].mesh,
+					scene.obstacles[2].mesh
+				);
+				///////////////////////////////////////////////////////////
+
+				circleL = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "black" })
+				);
+				scene.add(circleL);
+				circleL.position.set(2000, 0, 0);
+				circleR = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "cyan" })
+				);
+				scene.add(circleR);
+				circleR.position.set(2000, 0, 0);
+				circleA = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "pink" })
+				);
+				scene.add(circleA);
+				circleA.position.set(2000, 0, 0);
+			}
+			function randomPosZX(min, max) {
+				let x = min + (max - min) * Math.random();
+				let z = min + (max - min) * Math.random();
+
+				return new THREE.Vector3(x, 0, z); //x,0,z);
+			}
+			function findMin(num1, num2) {
+				return num1 > num2 ? num2 : num1;
+			}
+
+			function nearObstacle() {
+				var distances = [];
+				var distance = prey.pos.distanceTo(
+					scene.obstacles[0].mesh.position
+				);
+				distances.push(distance);
+				var distance1 = prey.pos.distanceTo(
+					scene.obstacles[1].mesh.position
+				);
+				distances.push(distance1);
+				var distance2 = prey.pos.distanceTo(
+					scene.obstacles[2].mesh.position
+				);
+				distances.push(distance2);
+
+				var min = findMin(distance, distance1);
+				min = findMin(min, distance2);
+
+				if (min === distance) return scene.obstacles[0];
+				if (min === distance1) return scene.obstacles[1];
+				if (min === distance2) return scene.obstacles[2];
+			}
+
+			function findP(c) {
+				var axis = new THREE.Vector3(0, 1, 0);
+				var cp = new THREE.Vector3();
+				var csDis = c.position.distanceTo(soldier.pos);
+				var theta;
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+				cp = cs.setLength(r);
+				cp.applyAxisAngle(axis, theta);
+				var p = new THREE.Vector3();
+				p.subVectors(c.position, cp);
+
+				circleL.rotation.x = -Math.PI / 2;
+				circleL.position.set(p.x, 0, p.z);
+				return p;
+			}
+			function findP1(c) {
+				var axis = new THREE.Vector3(0, 1, 0);
+				var cp1 = new THREE.Vector3();
+				var csDis = c.position.distanceTo(soldier.pos);
+				var theta;
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+				cp1 = cs.setLength(r);
+				cp1.applyAxisAngle(axis, -theta);
+				var p1 = new THREE.Vector3();
+				p1.subVectors(c.position, cp1);
+
+				circleR.rotation.x = -Math.PI / 2;
+				circleR.position.set(p1.x, 0, p1.z);
+				return p1;
+			}
+			function findHidePlace(c, p) {
+				var alpha, theta;
+				var csDis = c.position.distanceTo(soldier.pos);
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var psDis = p.distanceTo(soldier.pos);
+
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+
+				alpha = Math.atan2(cs.z, cs.x);
+				pAngle = alpha + theta;
+				p1Angle = alpha - theta + Math.PI * 2;
+			}
+
+			function update() {
+				keyboard.update();
+
+				if (keyboard.pressed("left")) {
+					soldier.setSeekTarget(soldier.pos.x - 20, 0, soldier.pos.z);
+				}
+				if (keyboard.pressed("right")) {
+					soldier.setSeekTarget(soldier.pos.x + 20, 0, soldier.pos.z);
+				}
+				if (keyboard.pressed("up")) {
+					soldier.setSeekTarget(soldier.pos.x, 0, soldier.pos.z - 20);
+				}
+
+				if (keyboard.pressed("down")) {
+					soldier.setSeekTarget(soldier.pos.x, 0, soldier.pos.z + 20);
+				}
+			}
+
+			setInterval(function () {
+				clock.elapsedTime = 0;
+				count = Math.random();
+			}, Math.random() * 1000 + 5000);
+
+			function onDocumentMouseDown(event) {
+				event.preventDefault();
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+				raycaster.setFromCamera(mouse, camera);
+				var intersects = raycaster.intersectObjects(pickables);
+				if (intersects.length > 0) {
+					flag.position.copy(intersects[0].point);
+					flag.position.y = 8;
+				}
+			}
+			function sight(dst) {
+				if (dst < 100 && front === true /*&& attack === false*/) {
+					prey.fsm.seeFlag();
+				} /*if (dst >= 100 && front === false && attack === false)*/ else {
+					prey.fsm.soldierFlag();
+				}
+			}
+
+			function animate() {
+				animate.distance = animate.distance ? animate.distance : 0;
+
+				requestAnimationFrame(animate);
+				render();
+				let dt = clock.getDelta();
+				let time = clock.getElapsedTime();
+				update();
+				soldier.update(dt, time);
+				prey.update(dt, time);
+				//hiddenOrNot();
+				prey.findTarget(flag);
+
+				var dst = prey.pos.distanceTo(flag.position);
+				var disToSoldier = prey.pos.distanceTo(soldier.pos);
+
+				var c = new THREE.Mesh();
+				c.position.set(
+					nearObstacle().mesh.position.x,
+					0,
+					nearObstacle().mesh.position.z
+				);
+
+				point = new THREE.Mesh();
+				point.position.set(120, 0, 0);
+
+				if (disToSoldier < 100) {
+					prey.fsm.attacked();
+					attack = true;
+					get = false;
+					findP(c);
+					findP1(c);
+					var p = findP(c);
+					findHidePlace(c, p);
+				}
+				if (disToSoldier >= 100) {
+					attack = false;
+				}
+				if (attack === false) sight(dst);
+
+				if (get === true || insert === true) {
+					prey.fsm.takeFlag();
+				}
+
+				if (
+					Math.abs(prey.pos.x - point.position.x) < 5 &&
+					Math.abs(prey.pos.z - point.position.z) < 5
+				) {
+					prey.setBrake(10);
+				}
+
+				animate.distance = dst;
+
+				// 讓「帥蓋」方位永遠固定
+				soldier.mesh.children[0].quaternion.copy(
+					soldier.mesh.quaternion.clone().invert()
+				);
+				// 讓「車蓋」方位永遠固定
+				prey.mesh.children[0].quaternion.copy(
+					prey.mesh.quaternion.clone().invert()
+				);
+			}
+
+			function render() {
+				renderer.render(scene, camera);
+			}
+		</script>
+	</body>
+</html>
