@@ -257,25 +257,21 @@
 							);*/
 
 							super.setSeekTarget(
-								30 *
-									Math.cos((pAngle + p1Angle) / 2 + Math.PI) +
+								30 * Math.cos((pAngle + p1Angle) / 2) +
 									nearObstacle().center.x,
 								0,
-								30 *
-									Math.sin((pAngle + p1Angle) / 2 + Math.PI) +
+								30 * Math.sin((pAngle + p1Angle) / 2) +
 									nearObstacle().center.z
 							);
 
-							circleA.rotation.x = -Math.PI / 2;
+							/*circleA.rotation.x = -Math.PI / 2;
 							circleA.position.set(
-								30 *
-									Math.cos((pAngle + p1Angle) / 2 + Math.PI) +
+								30 * Math.cos((pAngle + p1Angle) / 2) +
 									nearObstacle().center.x,
 								0,
-								30 *
-									Math.sin((pAngle + p1Angle) / 2 + Math.PI) +
+								30 * Math.sin((pAngle + p1Angle) / 2) +
 									nearObstacle().center.z
-							);
+							);*/
 						}
 						if (this.fsm.state === "touchDown") {
 							if (get === true) {
@@ -388,7 +384,7 @@
 			var get = false,
 				insert = false,
 				attack = false;
-			var circleL, circleR, circleA;
+			//var circleL, circleR, circleA;
 
 			var pAngle, p1Angle;
 			init();
@@ -606,7 +602,7 @@
 				);
 				///////////////////////////////////////////////////////////
 
-				circleL = new THREE.Mesh(
+				/*circleL = new THREE.Mesh(
 					new THREE.CircleGeometry(3, 20),
 					new THREE.MeshBasicMaterial({ color: "black" })
 				);
@@ -623,7 +619,7 @@
 					new THREE.MeshBasicMaterial({ color: "pink" })
 				);
 				scene.add(circleA);
-				circleA.position.set(2000, 0, 0);
+				circleA.position.set(2000, 0, 0);*/
 			}
 			function randomPosZX(min, max) {
 				let x = min + (max - min) * Math.random();
@@ -672,8 +668,8 @@
 				var p = new THREE.Vector3();
 				p.subVectors(c.position, cp);
 
-				circleL.rotation.x = -Math.PI / 2;
-				circleL.position.set(p.x, 0, p.z);
+				/*circleL.rotation.x = -Math.PI / 2;
+				circleL.position.set(p.x, 0, p.z);*/
 				return p;
 			}
 			function findP1(c) {
@@ -690,8 +686,8 @@
 				var p1 = new THREE.Vector3();
 				p1.subVectors(c.position, cp1);
 
-				circleR.rotation.x = -Math.PI / 2;
-				circleR.position.set(p1.x, 0, p1.z);
+				/*circleR.rotation.x = -Math.PI / 2;
+				circleR.position.set(p1.x, 0, p1.z);*/
 				return p1;
 			}
 			function findHidePlace(c, p) {
@@ -706,7 +702,13 @@
 
 				alpha = Math.atan2(cs.z, cs.x);
 				pAngle = alpha + theta;
-				p1Angle = alpha - theta + Math.PI * 2;
+				p1Angle = alpha - theta;
+				if (pAngle < 0) {
+					pAngle + 2 * Math.PI;
+				}
+				if (p1Angle < 0) {
+					p1Angle + 2 * Math.PI;
+				}
 			}
 
 			function update() {
@@ -781,8 +783,7 @@
 					prey.fsm.attacked();
 					attack = true;
 					get = false;
-					findP(c);
-					findP1(c);
+
 					var p = findP(c);
 					findHidePlace(c, p);
 				}
