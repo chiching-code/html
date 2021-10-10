@@ -1,0 +1,1199 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>capturer20</title>
+		<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+		<link
+			href="examples/demo/demo.css"
+			media="screen, print"
+			rel="stylesheet"
+			type="text/css"
+		/>
+	</head>
+	<style>
+		#info {
+			position: absolute;
+			top: 0px;
+			width: 100%;
+			padding: 10px;
+			text-align: center;
+			color: #f3bbe0;
+		}
+
+		body {
+			overflow: hidden;
+		}
+	</style>
+
+	<body>
+		<div id="info">
+			<h1>capturer</h1>
+			<button id="toggle">Switch View</button>
+			<p id="preyState"></p>
+		</div>
+
+		<script src="state-machine.js"></script>
+		<!-- script src="examples/demo/demo.js"></script-->
+		<script src="https://threejs.org/build/three.min.js"></script>
+		<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+		<script src="https://threejs.org/examples/js/controls/OrbitControls.js"></script>
+		<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+		<script type="module">
+			import { Gyroscope } from "https://threejs.org/examples/jsm/misc/Gyroscope.js";
+			$("#toggle").click(function () {
+				on = !on;
+				if (!on) {
+					camera = new THREE.PerspectiveCamera(
+						50,
+						window.innerWidth / window.innerHeight,
+						1,
+						1000
+					);
+					camera.position.set(0, 200, 200);
+					let controls = new THREE.OrbitControls(
+						camera,
+						renderer.domElement
+					);
+					$("#toggle").text("follow view");
+				}
+				if (on) {
+					$("#toggle").text("fixed view");
+				}
+			});
+			(function () {
+				Math.clamp = function (val, min, max) {
+					return Math.min(Math.max(val, min), max);
+				};
+			})();
+
+			function sleep(milliseconds) {
+				const start = Date.now();
+				while (Date.now() - start < milliseconds);
+			}
+
+			class Obstacle {
+				constructor(center, size) {
+					this.center = center.clone();
+					this.mesh = new THREE.Mesh(
+						new THREE.CylinderGeometry(size, size, 1, 20),
+						new THREE.MeshBasicMaterial()
+					);
+					this.mesh.position.copy(center);
+					this.size = size;
+					scene.add(this.mesh);
+				}
+			}
+
+			class Avatar {
+				constructor(pos, mesh) {
+					this.pos = pos.clone();
+					this.vel = new THREE.Vector3();
+					this.force = new THREE.Vector3();
+					this.MAXSPEED = 50;
+					this.ARRIVAL_R = 30;
+
+					this.target = null;
+					this.steermode = "";
+					this.BRAKING = 0;
+					this.size = 25;
+					this.mesh = mesh;
+					scene.add(mesh);
+
+					// for orientable agent
+					this.angle = 0;
+				}
+
+				update(dt) {
+					this.accumulateForce();
+					this.vel.add(this.force.clone().multiplyScalar(dt));
+
+					// ARRIVAL: velocity modulation
+					if (this.target !== null) {
+						let diff = this.target.clone().sub(this.pos);
+						let dst = diff.length();
+						if (dst < this.ARRIVAL_R) {
+							this.vel.setLength(dst);
+						}
+					}
+
+					// MAXSPEED modulation
+					let speed = this.vel.length();
+					this.vel.setLength(Math.clamp(speed, 0, this.MAXSPEED));
+					this.pos.add(this.vel.clone().multiplyScalar(dt));
+					this.mesh.position.copy(this.pos);
+
+					// for orientable agent
+					if (this.vel.length() > 2.0 && hideTurn === false) {
+						this.angle = Math.atan2(-this.vel.z, this.vel.x);
+						this.mesh.rotation.y = this.angle;
+					}
+					// collision
+					// for all obstacles in the scene
+					let obs = scene.obstacles;
+
+					// pick the most threatening one
+					let theOne = null;
+					let dist = 1e10;
+					let vhat = this.vel.clone().normalize();
+					const REACH = 50;
+					const K = 5;
+					let perp;
+					for (let i = 0; i < obs.length; i++) {
+						let point = obs[i].center.clone().sub(this.pos); // c-p
+						let proj = point.dot(vhat);
+						if (proj > 0 && proj < REACH) {
+							perp = new THREE.Vector3();
+							perp.subVectors(
+								point,
+								vhat.clone().setLength(proj)
+							);
+							let overlap =
+								obs[i].size + this.size - perp.length();
+							if (overlap > 0 && proj < dist) {
+								theOne = obs[i];
+								dist = proj;
+								perp.setLength(K * overlap);
+								perp.negate();
+							}
+						}
+					}
+					if (theOne) this.force.add(perp);
+
+					this.vel.add(this.force.clone().multiplyScalar(dt));
+				}
+
+				// target, SEEK & FLEE
+				setSeekTarget(x, y, z) {
+					this.BRAKING = 0;
+					this.steerMode = "SEEK";
+					this._setTarget(x, y, z);
+				}
+
+				setFleeTarget(x, y, z) {
+					this.BRAKING = 0;
+					this.steerMode = "FLEE";
+					this._setTarget(x, y, z);
+				}
+
+				_setTarget(x, y, z) {
+					// do not use outside class
+					if (this.target !== null) this.target.set(x, y, z);
+					else {
+						this.target = new THREE.Vector3(x, y, z);
+					}
+				}
+
+				targetInducedForce(targetPos) {
+					let sign = 0;
+					if (this.steerMode === "SEEK") sign = 1;
+					else if (this.steerMode === "FLEE") sign = -1;
+
+					return targetPos
+						.clone()
+						.sub(this.pos)
+						.normalize()
+						.multiplyScalar(sign * this.MAXSPEED)
+						.sub(this.vel);
+				}
+
+				setBrake(brake) {
+					// make the avatar stop gracefully
+					this.BRAKING = brake;
+					this.target = null; // release target
+				}
+				accumulateForce() {
+					if (this.target)
+						this.force.copy(this.targetInducedForce(this.target));
+					else this.force.set(0, 0, 0); // for null-target initial force
+
+					// braking ...
+					this.force.add(
+						this.vel.clone().multiplyScalar(-this.BRAKING)
+					);
+				}
+			}
+
+			class CapturerAgent extends Avatar {
+				constructor(pos, mesh, name = "", fsm) {
+					super(pos, mesh);
+					this.fsm = fsm;
+					// initial state got from fsm.state;
+					this.stateSign = null;
+				}
+
+				update(dt, time) {
+					if (this.pos.z >= 120) {
+						this.pos.z = 120;
+					} else if (this.pos.z <= -120) {
+						this.pos.z = -120;
+					} else if (this.pos.x >= 120) {
+						this.pos.x = 120;
+					} else if (this.pos.x <= -120) {
+						this.pos.x = -120;
+					}
+					super.update(dt); // calling avatar update
+					if (this.fsm) {
+						$("#preyState").text(this.fsm.state);
+
+						if (this.fsm.state === "snatch") {
+							super.setSeekTarget(
+								flag.position.x,
+								0,
+								flag.position.z
+							);
+
+							if (
+								Math.abs(flag.position.x - this.pos.x) < 5 &&
+								Math.abs(flag.position.z - this.pos.z) < 5
+							) {
+								get = true;
+								insert = true;
+							}
+						}
+						if (this.fsm.state === "search") {
+							var angleSearch = Math.random() * Math.PI * 2;
+							var nextTarget;
+							if (time < 1) {
+								nextTarget = this.mesh.localToWorld(
+									new THREE.Vector3(
+										75 * Math.cos(angleSearch),
+										0,
+										75 * Math.sin(angleSearch)
+									)
+								);
+								nextTargetCircle.position.copy(nextTarget);
+
+								super.setSeekTarget(
+									nextTarget.x,
+									0,
+									nextTarget.z
+								);
+							}
+							//super.setBrake(10);
+						}
+
+						if (this.fsm.state === "hide") {
+							insert = false;
+							var finalAngle = new THREE.Quaternion();
+							var x =
+								35 * Math.cos((pAngle + p1Angle) / 2) +
+								nearObstacle().center.x;
+							var z =
+								35 * Math.sin((pAngle + p1Angle) / 2) +
+								nearObstacle().center.z;
+							super.setSeekTarget(x, 0, z);
+							if (
+								Math.abs(this.pos.x - x) < 5 &&
+								Math.abs(this.pos.z - z) < 5
+							) {
+								this.angle = Math.atan2(-z, x);
+								//this.mesh.rotation.y = this.angle;
+								hideTurn = true;
+								finalAngle.setFromEuler(
+									new THREE.Euler(0, this.angle, 0)
+								);
+								this.mesh.quaternion.rotateTowards(
+									finalAngle,
+									0.01
+								);
+							}
+							hideTurn = false;
+						}
+						if (this.fsm.state === "touchDown") {
+							if (get === true) {
+								flag.position.set(this.pos.x, 10, this.pos.z);
+							}
+							if (insert === true) {
+								super.setSeekTarget(120, 0, 0);
+							}
+						}
+						if (this.fsm.state === "endGame") {
+							super.setSeekTarget(-90, 0, -90);
+						}
+					}
+					if (this.stateSign) {
+						this.stateSign.position.copy(this.pos);
+						this.stateSign.position.y = 30;
+						this.stateSign.lookAt(
+							camera.position.x,
+							10,
+							camera.position.z
+						);
+
+						if (this.fsm.state === "snatch") {
+							this.stateSign.children[0].material.visible = true;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+							nextTargetCircle.material.visible = false;
+							this.mesh.children[12].material.visible = false;
+							this.mesh.children[1].position.x = 3;
+							this.mesh.children[6].material.visible = true;
+							this.mesh.children[11].material.visible = true;
+							this.mesh.children[2].material.visible = false;
+							this.mesh.children[3].material.visible = false;
+							this.mesh.children[4].material.visible = false;
+							this.mesh.children[5].material.visible = false;
+							this.mesh.children[7].material.visible = false;
+							this.mesh.children[8].material.visible = false;
+							this.mesh.children[9].material.visible = false;
+							this.mesh.children[10].material.visible = false;
+						}
+						if (this.fsm.state === "search") {
+							this.stateSign.children[1].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+
+							if (time < 1) {
+								this.mesh.children[12].material.visible = true;
+								nextTargetCircle.material.visible = true;
+							} else {
+								this.mesh.children[12].material.visible = false;
+								nextTargetCircle.material.visible = false;
+							}
+							this.mesh.children[1].position.x = 3;
+							this.mesh.children[2].material.visible = true;
+							this.mesh.children[7].material.visible = true;
+							this.mesh.children[3].material.visible = false;
+							this.mesh.children[4].material.visible = false;
+							this.mesh.children[5].material.visible = false;
+							this.mesh.children[6].material.visible = false;
+							this.mesh.children[11].material.visible = false;
+							this.mesh.children[8].material.visible = false;
+							this.mesh.children[9].material.visible = false;
+							this.mesh.children[10].material.visible = false;
+						}
+						if (this.fsm.state === "hide") {
+							this.stateSign.children[2].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+							nextTargetCircle.material.visible = false;
+							this.mesh.children[12].material.visible = false;
+							this.mesh.children[1].position.x = 3;
+							this.mesh.children[3].material.visible = true;
+							this.mesh.children[8].material.visible = true;
+							this.mesh.children[4].material.visible = false;
+							this.mesh.children[2].material.visible = false;
+							this.mesh.children[5].material.visible = false;
+							this.mesh.children[6].material.visible = false;
+							this.mesh.children[11].material.visible = false;
+							this.mesh.children[7].material.visible = false;
+							this.mesh.children[9].material.visible = false;
+							this.mesh.children[10].material.visible = false;
+						}
+						if (this.fsm.state === "touchDown") {
+							this.stateSign.children[3].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							nextTargetCircle.material.visible = false;
+							this.mesh.children[12].material.visible = false;
+							if (Math.round(time * 4) % 2 === 0) {
+								this.mesh.children[4].material.visible = true;
+								this.mesh.children[2].material.visible = false;
+							} else {
+								this.mesh.children[2].material.visible = true;
+								this.mesh.children[4].material.visible = false;
+							}
+
+							//this.mesh.children[4].material.visible = true;
+							this.mesh.children[9].material.visible = true;
+							this.mesh.children[3].material.visible = false;
+							//this.mesh.children[2].material.visible = false;
+							this.mesh.children[5].material.visible = false;
+							this.mesh.children[6].material.visible = false;
+							this.mesh.children[11].material.visible = false;
+							this.mesh.children[7].material.visible = false;
+							this.mesh.children[8].material.visible = false;
+							this.mesh.children[10].material.visible = false;
+						}
+						if (this.fsm.state === "endGame") {
+							this.stateSign.children[3].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							nextTargetCircle.material.visible = false;
+							this.mesh.children[12].material.visible = false;
+
+							this.mesh.children[5].material.visible = true;
+							this.mesh.children[3].material.visible = false;
+							this.mesh.children[2].material.visible = false;
+							this.mesh.children[4].material.visible = false;
+						}
+					}
+				}
+				/*straight() {
+					start = true;
+					setTimeout(this.straight(), 5000);
+				}*/
+
+				findTarget(target) {
+					var point = target.position.clone().sub(this.pos);
+					var pointWarrior = soldier.pos
+						.clone()
+						.sub(this.pos)
+						.normalize();
+
+					var preyDirect = this.mesh
+						.localToWorld(new THREE.Vector3(1, 0, 0))
+						.sub(this.mesh.localToWorld(new THREE.Vector3(0, 0, 0)))
+						.normalize();
+					var CosineValueWarrior = pointWarrior.dot(preyDirect);
+
+					ray.set(this.pos, pointWarrior);
+					//debugger;
+					var intersects = ray.intersectObjects(pickables2, true);
+					if (intersects.length > 0) {
+						if (
+							intersects[0].object.name ===
+								soldier.mesh.children[2].name &&
+							CosineValueWarrior > 0
+						) {
+							seeWarrior = true;
+						} else seeWarrior = false;
+					}
+
+					var CosineValue = point.dot(preyDirect);
+
+					if (CosineValue > 0) {
+						front = true;
+					} else {
+						front = false;
+					}
+				}
+			}
+
+			class SoldierAgent extends Avatar {
+				constructor(pos, mesh, name = "", fsm) {
+					super(pos, mesh);
+					this.fsm = fsm;
+					// initial state got from fsm.state;
+					this.stateSign = null;
+				}
+
+				update(dt, time) {
+					if (this.pos.z > 120) {
+						this.pos.z = 120;
+					} else if (this.pos.z < -120) {
+						this.pos.z = -120;
+					} else if (this.pos.x > 120) {
+						this.pos.x = 120;
+					} else if (this.pos.x < -120) {
+						this.pos.x = -120;
+					}
+					super.update(dt); // calling avatar update
+					if (this.fsm) {
+						$("#preyState").text(this.fsm.state);
+					}
+					if (this.stateSign) {
+						this.stateSign.position.copy(this.pos);
+						this.stateSign.position.y = 30;
+						this.stateSign.lookAt(
+							camera.position.x,
+							10,
+							camera.position.z
+						);
+
+						if (this.fsm.state === "snatch") {
+							this.stateSign.children[0].material.visible = true;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "search") {
+							this.stateSign.children[1].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "hide") {
+							this.stateSign.children[2].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[3].material.visible = false;
+						}
+						if (this.fsm.state === "touchDown") {
+							this.stateSign.children[3].material.visible = true;
+							this.stateSign.children[0].material.visible = false;
+							this.stateSign.children[1].material.visible = false;
+							this.stateSign.children[2].material.visible = false;
+						}
+					}
+				}
+
+				findTarget() {
+					var pointCapturer = prey.pos
+						.clone()
+						.sub(this.pos)
+						.normalize();
+
+					var soldierDirect = this.mesh
+						.localToWorld(new THREE.Vector3(1, 0, 0))
+						.sub(this.mesh.localToWorld(new THREE.Vector3(0, 0, 0)))
+						.normalize();
+					var CosineValueCapturer = pointCapturer.dot(soldierDirect);
+					if (CosineValueCapturer > 0) {
+						seeCapturer = true;
+					} else seeCapturer = false;
+				}
+			}
+
+			function initFSM() {
+				let fsm = new StateMachine({
+					init: "search",
+					transitions: [
+						{ name: "seeFlag", from: "search", to: "snatch" },
+						{ name: "seeFlag", from: "snatch", to: "snatch" },
+						{ name: "seeFlag", from: "hide", to: "snatch" },
+
+						//{ name: "findFlag", from: "snatch", to: "search" },
+						{ name: "findFlag", from: "hide", to: "search" },
+						{ name: "findFlag", from: "search", to: "search" },
+						{ name: "findFlag", from: "endGame", to: "search" },
+						{ name: "attacked", from: "snatch", to: "hide" },
+						{ name: "attacked", from: "search", to: "hide" },
+						{ name: "attacked", from: "touchDown", to: "hide" },
+						{ name: "attacked", from: "hide", to: "hide" },
+						{ name: "takeFlag", from: "snatch", to: "touchDown" },
+						{
+							name: "takeFlag",
+							from: "touchDown",
+							to: "touchDown",
+						},
+						{ name: "defense", from: "endGame", to: "endGame" },
+						{ name: "defense", from: "snatch", to: "endGame" },
+						{ name: "defense", from: "search", to: "endGame" },
+						{ name: "defense", from: "hide", to: "endGame" },
+					],
+				});
+				return fsm;
+			}
+			var scene, camera, renderer;
+			var clock;
+			var keyboard = new KeyboardState();
+			var raycaster, ray, ray2;
+			var mouse = new THREE.Vector2();
+			var pickables = [],
+				pickables2 = [];
+			var front = false;
+			var count = 0;
+			var flag, prey, soldier;
+			var get = false,
+				insert = false;
+			var soldierFlag = false;
+			//var circleL, circleR, circleA;
+			var seeWarrior = false,
+				seeCapturer = false;
+			var attack = false;
+			var pAngle, p1Angle;
+			var end = false;
+			var second = 0;
+			var already = 1;
+			var hideTurn = false;
+			var nextTargetCircle;
+			var gyro, on;
+			init();
+			initFSM();
+
+			animate();
+
+			function soldierMesh() {
+				let loader = new THREE.TextureLoader();
+				let icon = loader.load("https://i.imgur.com/7yl0PLz.png");
+				let loaderBody = new THREE.TextureLoader();
+				let iconBody = loader.load("https://i.imgur.com/7yl0PLz.png");
+				iconBody.wrapS = THREE.RepeatWrapping;
+				iconBody.wrapT = THREE.RepeatWrapping;
+				iconBody.repeat.set(5, 1);
+				var soldier = new THREE.Group();
+				var mat = new THREE.MeshBasicMaterial({
+					map: iconBody,
+					side: THREE.DoubleSide,
+				});
+				var body = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					mat
+				);
+				var pointer = new THREE.Mesh(
+					new THREE.BoxGeometry(15, 2, 2),
+					new THREE.MeshNormalMaterial()
+				);
+				body.position.y = 2;
+				body.name = "soldierBody";
+				pointer.position.set(5, 2, 0);
+
+				// '帥'蓋
+				let iconZX = new THREE.Group();
+				let circle = new THREE.Mesh(
+					new THREE.CircleGeometry(8, 8),
+					new THREE.MeshBasicMaterial({ map: icon })
+				);
+				circle.position.y = 4;
+				circle.rotation.x = -Math.PI / 2;
+				iconZX.add(circle);
+
+				soldier.add(iconZX, pointer, body);
+				return soldier;
+			}
+
+			function capturerMesh() {
+				let loader = new THREE.TextureLoader();
+				let icon = loader.load("https://i.imgur.com/MIvqfLQ.png");
+
+				let loaderBody = new THREE.TextureLoader();
+				let iconBody = loader.load("https://i.imgur.com/MIvqfLQ.png");
+				iconBody.wrapS = THREE.RepeatWrapping;
+				iconBody.wrapT = THREE.RepeatWrapping;
+				iconBody.repeat.set(5, 1);
+
+				var capturer = new THREE.Group();
+				var mat = new THREE.MeshNormalMaterial();
+				var body = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "lightgreen",
+						map: iconBody,
+						side: THREE.DoubleSide,
+					}) //search
+				);
+				var body2 = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "yellow",
+						map: iconBody,
+						side: THREE.DoubleSide,
+					}) //beAttacked
+				);
+				var body3 = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "blue",
+						map: iconBody,
+						side: THREE.DoubleSide,
+					}) //touchDown
+				);
+				var body4 = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "red",
+						map: iconBody,
+						side: THREE.DoubleSide,
+					}) //endDown
+				);
+				var body5 = new THREE.Mesh(
+					new THREE.CylinderGeometry(8, 8, 4, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: 0x024716,
+						map: iconBody,
+						side: THREE.DoubleSide,
+					}) //snatch
+				);
+
+				var pointer = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.5, 1.5, 15, 20, 1),
+					mat
+				);
+				var pbody = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.6, 1.6, 1.5, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "lightgreen",
+						side: THREE.DoubleSide,
+					})
+				);
+				var pbody2 = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.6, 1.6, 1.5, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "yellow",
+						side: THREE.DoubleSide,
+					})
+				);
+				var pbody3 = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.6, 1.6, 1.5, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "blue",
+						side: THREE.DoubleSide,
+					})
+				);
+				var pbody4 = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.6, 1.6, 1.5, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: "red",
+						side: THREE.DoubleSide,
+					})
+				);
+				var pbody5 = new THREE.Mesh(
+					new THREE.CylinderGeometry(1.6, 1.6, 1.5, 20, 1, true),
+					new THREE.MeshBasicMaterial({
+						color: 0x024716,
+						side: THREE.DoubleSide,
+					})
+				);
+
+				var searchCircle = new THREE.Mesh(
+					new THREE.CircleGeometry(75, 32),
+					new THREE.MeshBasicMaterial({
+						color: "pink",
+						transparent: true,
+						opacity: 0.4,
+						side: THREE.DoubleSide,
+					})
+				);
+				searchCircle.rotation.x = -Math.PI / 2;
+
+				pbody.position.set(11, 2, 0);
+				pbody.rotation.z = Math.PI / 2;
+				pbody2.position.set(11, 2, 0);
+				pbody2.rotation.z = Math.PI / 2;
+				pbody3.position.set(11, 2, 0);
+				pbody3.rotation.z = Math.PI / 2;
+				pbody4.position.set(11, 2, 0);
+				pbody4.rotation.z = Math.PI / 2;
+				pbody5.position.set(11, 2, 0);
+				pbody5.rotation.z = Math.PI / 2;
+				body.position.y = 2;
+				body2.position.y = 2;
+				body3.position.y = 2;
+				body4.position.y = 2;
+				body5.position.y = 2;
+				pointer.position.set(5, 2, 0);
+				pointer.rotation.z = Math.PI / 2;
+
+				// '車'蓋
+				let iconZX = new THREE.Group();
+				let circle = new THREE.Mesh(
+					new THREE.CircleGeometry(8, 8),
+					new THREE.MeshBasicMaterial({
+						map: icon,
+						side: THREE.DoubleSide,
+					})
+				);
+				circle.position.y = 4;
+				circle.rotation.x = -Math.PI / 2;
+				iconZX.add(circle);
+
+				capturer.add(
+					iconZX,
+					pointer,
+					body,
+					body2,
+					body3,
+					body4,
+					body5,
+					pbody,
+					pbody2,
+					pbody3,
+					pbody4,
+					pbody5,
+					searchCircle
+				);
+				return capturer;
+			}
+			function stateSign() {
+				let loader = new THREE.TextureLoader();
+				let snatchMap = loader.load("https://i.imgur.com/L67LiqY.png");
+				let searchMap = loader.load("https://i.imgur.com/ui0cEeC.png");
+				let hideMap = loader.load("https://i.imgur.com/BRChBw1.png");
+				let touchDownMap = loader.load(
+					"https://i.imgur.com/lJ95E9L.png"
+				);
+				let snatchMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 30),
+					new THREE.MeshBasicMaterial({
+						map: snatchMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let searchMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 20),
+					new THREE.MeshBasicMaterial({
+						map: searchMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let hideMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(35, 30),
+					new THREE.MeshBasicMaterial({
+						map: hideMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let touchDownMesh = new THREE.Mesh(
+					new THREE.PlaneGeometry(50, 30),
+					new THREE.MeshBasicMaterial({
+						map: touchDownMap,
+						transparent: true,
+						alphaTest: 0,
+						side: THREE.DoubleSide,
+					})
+				);
+				let preyStateSign = new THREE.Group();
+				preyStateSign.add(
+					snatchMesh,
+					searchMesh,
+					hideMesh,
+					touchDownMesh
+				);
+				return preyStateSign;
+			}
+			function init() {
+				clock = new THREE.Clock();
+				scene = new THREE.Scene();
+				camera = new THREE.PerspectiveCamera(
+					50,
+					window.innerWidth / window.innerHeight,
+					1,
+					1000
+				);
+				camera.position.set(0, 200, 200);
+
+				var gridXZ = new THREE.GridHelper(240, 24, "red", "white");
+				scene.add(gridXZ);
+
+				renderer = new THREE.WebGLRenderer();
+				renderer.setSize(window.innerWidth, window.innerHeight);
+				renderer.setClearColor(0x888888);
+
+				let controls = new THREE.OrbitControls(
+					camera,
+					renderer.domElement
+				);
+
+				document.body.appendChild(renderer.domElement);
+				document.addEventListener(
+					"pointerdown",
+					onDocumentMouseDown,
+					false
+				);
+				raycaster = new THREE.Raycaster();
+				ray = new THREE.Raycaster();
+				ray2 = new THREE.Raycaster();
+				///////////////////////////////////////////////////////////
+				var plane = new THREE.Mesh(
+					new THREE.PlaneGeometry(240, 240),
+					new THREE.MeshBasicMaterial({
+						transparent: true,
+						opacity: 0.5,
+						visible: true,
+					})
+				);
+				scene.add(plane);
+				plane.material.visible = false;
+				plane.rotation.x = -Math.PI / 2;
+				pickables = [plane];
+				///////////////////////////////////////////////////////////
+				soldier = new SoldierAgent(
+					randomPosZX(-100, 100),
+					soldierMesh(),
+					"T-Rex"
+				);
+
+				prey = new CapturerAgent(
+					randomPosZX(-100, 100),
+					capturerMesh(),
+					"sheep",
+					initFSM()
+				);
+				prey.stateSign = stateSign();
+				//scene.add(prey.stateSign);
+
+				///////////////////////////////////////////////////////////
+				let loader = new THREE.TextureLoader();
+				loader.crossOrigin = "";
+				let tex = loader.load("https://i.imgur.com/3YSMhL0.png");
+				flag = new THREE.Mesh(
+					new THREE.CircleGeometry(10, 20),
+					new THREE.MeshBasicMaterial({
+						map: tex,
+						transparent: true,
+						side: THREE.DoubleSide,
+					})
+				);
+				var x = Math.random() * 200 - 100;
+				flag.position.set(x, 8, -x);
+				scene.add(flag);
+				flag.name = "flag";
+
+				scene.obstacles = [];
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(50, 0, 50), 30)
+				);
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(-70, 0, 40), 15)
+				);
+				scene.obstacles.push(
+					new Obstacle(new THREE.Vector3(0, 0, -60), 15)
+				);
+				scene.obstacles[0].mesh.name = "obstacles";
+				scene.obstacles[1].mesh.name = "obstacles";
+				scene.obstacles[2].mesh.name = "obstacles";
+				pickables2.push(
+					flag,
+					scene.obstacles[0].mesh,
+					scene.obstacles[1].mesh,
+					scene.obstacles[2].mesh,
+					soldier.mesh.children[2]
+				);
+				///////////////////////////////////////////////////////////
+
+				nextTargetCircle = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "black" })
+				);
+				scene.add(nextTargetCircle);
+				nextTargetCircle.rotation.x = -Math.PI / 2;
+				nextTargetCircle.position.set(2000, 0, 0);
+
+				/*circleR = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "cyan" })
+				);
+				scene.add(circleR);
+				circleR.position.set(2000, 0, 0);
+				circleA = new THREE.Mesh(
+					new THREE.CircleGeometry(3, 20),
+					new THREE.MeshBasicMaterial({ color: "pink" })
+				);
+				scene.add(circleA);
+				circleA.position.set(2000, 0, 0);*/
+			}
+			function randomPosZX(min, max) {
+				let x = min + (max - min) * Math.random();
+				let z = min + (max - min) * Math.random();
+
+				return new THREE.Vector3(x, 0, z); //x,0,z);
+			}
+			function findMin(num1, num2) {
+				return num1 > num2 ? num2 : num1;
+			}
+
+			function nearObstacle() {
+				var distances = [];
+				var distance = prey.pos.distanceTo(
+					scene.obstacles[0].mesh.position
+				);
+				distances.push(distance);
+				var distance1 = prey.pos.distanceTo(
+					scene.obstacles[1].mesh.position
+				);
+				distances.push(distance1);
+				var distance2 = prey.pos.distanceTo(
+					scene.obstacles[2].mesh.position
+				);
+				distances.push(distance2);
+
+				var min = findMin(distance, distance1);
+				min = findMin(min, distance2);
+
+				if (min === distance) return scene.obstacles[0];
+				if (min === distance1) return scene.obstacles[1];
+				if (min === distance2) return scene.obstacles[2];
+			}
+
+			function findP(c) {
+				var axis = new THREE.Vector3(0, 1, 0);
+				var cp = new THREE.Vector3();
+				var csDis = c.position.distanceTo(soldier.pos);
+				var theta;
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+				cp = cs.setLength(r);
+				cp.applyAxisAngle(axis, theta);
+				var p = new THREE.Vector3();
+				p.subVectors(c.position, cp);
+
+				/*circleL.rotation.x = -Math.PI / 2;
+				circleL.position.set(p.x, 0, p.z);*/
+				return p;
+			}
+			function findP1(c) {
+				var axis = new THREE.Vector3(0, 1, 0);
+				var cp1 = new THREE.Vector3();
+				var csDis = c.position.distanceTo(soldier.pos);
+				var theta;
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+				cp1 = cs.setLength(r);
+				cp1.applyAxisAngle(axis, -theta);
+				var p1 = new THREE.Vector3();
+				p1.subVectors(c.position, cp1);
+
+				/*circleR.rotation.x = -Math.PI / 2;
+				circleR.position.set(p1.x, 0, p1.z);*/
+				return p1;
+			}
+			function findHidePlace(c, p) {
+				var alpha, theta;
+				var csDis = c.position.distanceTo(soldier.pos);
+				var r = nearObstacle().size;
+				theta = Math.acos(r / csDis);
+				var psDis = p.distanceTo(soldier.pos);
+
+				var cs = new THREE.Vector3();
+				cs.subVectors(c.position, soldier.pos);
+
+				alpha = Math.atan2(cs.z, cs.x);
+				pAngle = alpha + theta;
+				p1Angle = alpha - theta;
+				if (pAngle < 0) {
+					pAngle + 2 * Math.PI;
+				}
+				if (p1Angle < 0) {
+					p1Angle + 2 * Math.PI;
+				}
+			}
+
+			function update() {
+				keyboard.update();
+
+				if (keyboard.pressed("left")) {
+					soldier.setSeekTarget(soldier.pos.x - 20, 0, soldier.pos.z);
+				}
+				if (keyboard.pressed("right")) {
+					soldier.setSeekTarget(soldier.pos.x + 20, 0, soldier.pos.z);
+				}
+				if (keyboard.pressed("up")) {
+					soldier.setSeekTarget(soldier.pos.x, 0, soldier.pos.z - 20);
+				}
+
+				if (keyboard.pressed("down")) {
+					soldier.setSeekTarget(soldier.pos.x, 0, soldier.pos.z + 20);
+				}
+			}
+
+			setInterval(function () {
+				clock.elapsedTime = 0;
+				//count = Math.random();
+			}, Math.random() * 1000 + 5000);
+
+			function onDocumentMouseDown(event) {
+				event.preventDefault();
+				mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+				mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+				raycaster.setFromCamera(mouse, camera);
+				var intersects = raycaster.intersectObjects(pickables);
+				if (intersects.length > 0) {
+					flag.position.copy(intersects[0].point);
+					flag.position.y = 8;
+				}
+			}
+
+			setInterval(function () {
+				//console.log(second);
+				if (already > -1) second = 0;
+				else second += 1;
+			}, 1000);
+
+			function animate() {
+				animate.distance = animate.distance ? animate.distance : 0;
+
+				requestAnimationFrame(animate);
+				render();
+				let dt = clock.getDelta();
+				let time = clock.getElapsedTime();
+				update();
+				soldier.update(dt, time);
+				prey.update(dt, time);
+				//hiddenOrNot();
+				prey.findTarget(flag);
+				soldier.findTarget();
+				var dst = prey.pos.distanceTo(flag.position);
+				var disToSoldier = prey.pos.distanceTo(soldier.pos);
+
+				if (on) {
+					gyro = new Gyroscope();
+					prey.mesh.add(gyro);
+					gyro.add(camera);
+				}
+
+				var c = new THREE.Mesh();
+				c.position.set(
+					nearObstacle().mesh.position.x,
+					0,
+					nearObstacle().mesh.position.z
+				);
+
+				var point = new THREE.Mesh();
+				point.position.set(120, 0, 0);
+
+				if (
+					Math.abs(soldier.pos.x - flag.position.x) < 5 &&
+					Math.abs(soldier.pos.z - flag.position.z) < 5 &&
+					get === false &&
+					insert === false &&
+					end === false
+				) {
+					flag.position.set(soldier.pos.x, 10, soldier.pos.z);
+					soldierFlag = true;
+				} else {
+					soldierFlag = false;
+				}
+
+				if (soldierFlag === false) {
+					if (
+						/* disToSoldier < 75 &&*/ seeWarrior === true &&
+						seeCapturer === true
+					) {
+						already -= 1;
+
+						get = false;
+						attack = true;
+						prey.fsm.attacked();
+
+						var p = findP(c);
+						findHidePlace(c, p);
+					} else if (second > 8 || attack === false) {
+						already = 1;
+
+						attack = false;
+						if (get === true || insert === true) {
+							prey.fsm.takeFlag();
+						} else if (dst < 75 /*&& front === true*/) {
+							prey.fsm.seeFlag();
+						} else {
+							/*if (dst >= 200 && front === false && get === false) */
+							prey.fsm.findFlag();
+						}
+					}
+				}
+				if (soldierFlag === true) {
+					prey.fsm.defense();
+				}
+				if (
+					Math.abs(prey.pos.x - point.position.x) < 5 &&
+					Math.abs(prey.pos.z - point.position.z) < 5 &&
+					insert === true &&
+					get === true
+				) {
+					end = true;
+					prey.setBrake(10);
+				}
+
+				animate.distance = dst;
+				// 讓「帥蓋」方位永遠固定
+				soldier.mesh.children[0].quaternion.copy(
+					soldier.mesh.quaternion.clone().invert()
+				);
+				// 讓「車蓋」方位永遠固定
+				prey.mesh.children[0].quaternion.copy(
+					prey.mesh.quaternion.clone().invert()
+				);
+			}
+
+			function render() {
+				renderer.render(scene, camera);
+			}
+		</script>
+	</body>
+</html>
