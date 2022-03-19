@@ -409,15 +409,27 @@
 		<script src="https://threejs.org/build/three.min.js"></script>
 		<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
 		<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
-		
-		
-		
-		<div id="start"></div>
-		<div id="end"></div>
-		<div id="restart"></div>
+		<script type="importmap">
+		{
+			"imports": {
+				"three": "https://unpkg.com/three/build/three.module.js"
+			}
+		}
+        </script>
+        <script src="https://threejs.org/build/three.min.js"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 
-<script>
 
+
+            <div id="start"></div>
+            <div id="end"></div>
+            <div id="restart"></div>
+		
+        <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from "https://threejs.org/examples/jsm/controls/OrbitControls.js";
+        import { MTLLoader } from "https://threejs.org/examples/jsm/loaders/MTLLoader.js";
+        import { OBJLoader } from "https://threejs.org/examples/jsm/loaders/OBJLoader.js";
 (function () {
 	Math.clamp = function (val, min, max) {
 		return Math.min(Math.max(val, min), max);
